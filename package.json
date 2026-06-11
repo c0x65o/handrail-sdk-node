@@ -1,0 +1,52 @@
+{
+  "name": "@handrail/sdk-node",
+  "version": "0.1.18",
+  "description": "Handrail Signals Node SDK for Product Signals, Runtime Signals, analytics, experimentation, and Express services.",
+  "license": "UNLICENSED",
+  "type": "module",
+  "main": "./src/index.cjs",
+  "module": "./src/index.mjs",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.mjs",
+      "require": "./src/index.cjs",
+      "default": "./src/index.mjs"
+    }
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "check": "node --check src/index.cjs && node --check src/index.mjs",
+    "test": "npm run check && node --test test/*.test.cjs"
+  },
+  "keywords": [
+    "handrail",
+    "signals",
+    "product-signals",
+    "runtime-signals",
+    "product-analytics",
+    "analytics",
+    "experimentation",
+    "experiments",
+    "ab-testing",
+    "a-b-testing",
+    "express",
+    "node"
+  ],
+  "peerDependencies": {
+    "express": ">=4 <6"
+  },
+  "peerDependenciesMeta": {
+    "express": {
+      "optional": true
+    }
+  }
+}
