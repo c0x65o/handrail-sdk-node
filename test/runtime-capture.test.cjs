@@ -4,6 +4,31 @@ const test = require('node:test');
 
 const handrail = require('../src/index.cjs');
 
+const PRODUCT_SIGNAL_KEYS = new Set([
+  'event_kind',
+  'eventKind',
+  'analytics',
+  'analytics_key',
+  'analyticsKey',
+  'analytics_source_id',
+  'analyticsSourceId',
+  'source_id',
+  'sourceId',
+  'experiment',
+  'experiment_key',
+  'experimentKey',
+  'variant_key',
+  'variantKey',
+  'assignment_id',
+  'assignmentId',
+  'exposure_id',
+  'exposureId',
+  'write_key',
+  'writeKey',
+  'public_key',
+  'publicKey'
+]);
+
 function completeConfig(overrides = {}) {
   return {
     ...handrail.loadConfigFromEnv({
@@ -18,6 +43,22 @@ function completeConfig(overrides = {}) {
     flushIntervalMs: 60_000,
     ...overrides
   };
+}
+
+function assertNoProductSignalFields(value, path = 'event') {
+  if (!value || typeof value !== 'object') {
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    value.forEach((item, index) => assertNoProductSignalFields(item, `${path}[${index}]`));
+    return;
+  }
+
+  for (const [key, item] of Object.entries(value)) {
+    assert.equal(PRODUCT_SIGNAL_KEYS.has(key), false, `${path}.${key} must not be a Product Signals field`);
+    assertNoProductSignalFields(item, `${path}.${key}`);
+  }
 }
 
 test('manual captureException records normalized details, metadata, tags, context, and redacted breadcrumbs', () => {
@@ -197,7 +238,7 @@ test('captureEvent and captureSpan respect Runtime Signals allowlists, samplers,
   }));
 
   assert.equal(client.captureEvent({
-    type: 'message',
+    type: 'exception',
     message: 'not allowed'
   }), null);
   assert.equal(client.captureEvent({
@@ -250,6 +291,148 @@ test('captureEvent and captureSpan respect Runtime Signals allowlists, samplers,
   assert.equal(calls[1].event_metadata_json.span.op, 'db');
   assert.equal(calls[1].event_metadata_json.span.token, '[Redacted]');
   assert.equal(calls[1].event_metadata_json.context.password, '[Redacted]');
+});
+
+test('manual Runtime capture APIs strip Product Signals fields from queued and flushed payloads', async () => {
+  const calls = [];
+  const client = handrail.createClient(completeConfig({
+    fetch: async (url, init) => {
+      calls.push({
+        url,
+        init,
+        body: JSON.parse(init.body)
+      });
+      return { ok: true, status: 202 };
+    }
+  }));
+
+  client.addBreadcrumb({
+    category: 'analytics',
+    message: 'product breadcrumb',
+    data: {
+      analytics_source_id: 'src_123',
+      sourceId: 'src_123',
+      experiment: {
+        experiment_key: 'checkout-copy',
+        variantKey: 'test',
+        assignment_id: 'assign_123',
+        exposureId: 'hrax_123'
+      },
+      safe: 'kept'
+    }
+  });
+  client.captureEvent({
+    type: 'transaction',
+    event_kind: 'page_view',
+    analytics: {
+      key: 'analytics-write-key'
+    },
+    analytics_key: 'analytics-write-key',
+    eventKind: 'conversion',
+    transaction: {
+      method: 'POST',
+      route: '/checkout',
+      path: '/checkout',
+      statusCode: 201,
+      durationMs: 34
+    },
+    request: {
+      method: 'POST',
+      path: '/checkout',
+      url: '/checkout?analytics_key=analytics-write-key&source_id=src_123&keep=yes',
+      headers: {
+        'x-handrail-analytics-key': 'analytics-write-key',
+        'x-request-id': 'req-123'
+      },
+      query: {
+        analytics_source_id: 'src_123',
+        sourceId: 'src_123',
+        keep: 'yes'
+      }
+    },
+    context: {
+      experiment: {
+        experiment_key: 'checkout-copy',
+        variant_key: 'test'
+      },
+      safe: 'transaction-context'
+    },
+    metadata: {
+      analyticsSourceId: 'src_123',
+      assignmentId: 'assign_123',
+      safe: 'transaction-metadata'
+    },
+    tags: {
+      analytics_key: 'analytics-write-key',
+      tenant: 'acme'
+    },
+    breadcrumbs: client.getBreadcrumbs()
+  });
+  client.captureException(new Error('manual exception'), {
+    request: {
+      path: '/error',
+      headers: {
+        'x-handrail-analytics-key': 'analytics-write-key',
+        'x-request-id': 'req-456'
+      }
+    },
+    experiment_key: 'checkout-copy',
+    exposure_id: 'hrax_123',
+    safe: 'exception-context',
+    tags: {
+      analyticsSourceId: 'src_123',
+      mechanism: 'manual'
+    }
+  });
+  client.captureMessage('manual message', {
+    analytics_key: 'analytics-write-key',
+    publicKey: 'public-source-key',
+    experiment: {
+      variant_key: 'test'
+    },
+    safe: 'message-context'
+  });
+  client.captureSpan({
+    op: 'db',
+    description: 'select checkout',
+    analytics_source_id: 'src_123',
+    sourceId: 'src_123',
+    experiment: {
+      assignment_id: 'assign_123'
+    },
+    safe: 'span-context'
+  }, {
+    context: {
+      write_key: 'analytics-write-key',
+      variantKey: 'test',
+      safe: 'span-extra-context'
+    },
+    tags: {
+      analytics_key: 'analytics-write-key',
+      component: 'db'
+    }
+  });
+
+  assert.equal(client._events.length, 4);
+  client._events.forEach((event, index) => assertNoProductSignalFields(event, `queued[${index}]`));
+  assert.equal(client._events[0].request.queryParams.keep, 'yes');
+  assert.equal(client._events[0].request.headers['x-request-id'], 'req-123');
+  assert.equal(client._events[0].tags.tenant, 'acme');
+  assert.equal(client._events[1].context.safe, 'exception-context');
+  assert.equal(client._events[2].context.safe, 'message-context');
+  assert.equal(client._events[3].span.safe, 'span-context');
+  assert.equal(client._events[3].tags.component, 'db');
+
+  assert.equal(await client.flush(), true);
+  assert.equal(calls.length, 4);
+  for (const [index, call] of calls.entries()) {
+    assert.equal(call.url, 'https://handrail.example.test/api/apm/events');
+    assert.equal(call.init.headers.authorization, 'Bearer token-test');
+    assert.equal(call.init.headers['x-handrail-apm-token'], 'token-test');
+    assert.equal(call.init.headers['x-handrail-analytics-key'], undefined);
+    assert.ok(['request', 'exception', 'span'].includes(call.body.event_type));
+    assertNoProductSignalFields(call.body, `flush[${index}]`);
+  }
 });
 
 test('span sample rate is parsed from env and drops span events', () => {

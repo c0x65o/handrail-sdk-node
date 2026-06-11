@@ -58,6 +58,20 @@ const MAX_CONTEXT_ARRAY_ITEMS = 20;
 const REDACTED = '[Redacted]';
 const TRUNCATED = '[Truncated]';
 const SENSITIVE_KEY_PATTERN = /(?:authorization|cookie|password|passwd|secret|token|api[-_]?key|access[-_]?key|session|credential|private[-_]?key)/i;
+const RUNTIME_PRODUCT_SIGNAL_FIELD_KEYS = new Set([
+  'eventkind',
+  'analytics',
+  'analyticskey',
+  'analyticssourceid',
+  'sourceid',
+  'experiment',
+  'experimentkey',
+  'variantkey',
+  'assignmentid',
+  'exposureid',
+  'writekey',
+  'publickey'
+]);
 const ANALYTICS_EVENT_KINDS = new Set([
   'page_view',
   'route_view',
@@ -83,21 +97,39 @@ const ANALYTICS_CAMPAIGN_FIELDS = [
 ];
 const ANALYTICS_BLOCKED_PII_KEYS = [
   'address',
+  'anonymous_id',
   'authorization',
+  'body',
   'cookie',
+  'cookies',
   'credit_card',
   'email',
   'first_name',
   'full_name',
+  'full_url',
+  'header',
+  'headers',
+  'href',
   'ip',
   'ip_address',
   'last_name',
   'name',
   'password',
+  'payload',
   'phone',
+  'query',
+  'query_string',
+  'raw_body',
+  'raw_payload',
   'secret',
+  'session',
+  'session_id',
   'ssn',
-  'token'
+  'token',
+  'url',
+  'user_id',
+  'visitor',
+  'visitor_id'
 ];
 
 let currentClient = null;
@@ -1407,46 +1439,101 @@ function normalizeOptions(options = {}, env = process.env) {
 
 function readEnvOptions(env) {
   return mergeDefined({}, {
-    enabled: parseEnabled(env.HANDRAIL_APM_ENABLED),
-    endpoint: env.HANDRAIL_APM_ENDPOINT,
-    endpointMode: env.HANDRAIL_APM_ENDPOINT_MODE,
-    directEndpoint: firstDefined(
-      env.HANDRAIL_APM_DIRECT_ENDPOINT,
-      env.HANDRAIL_APM_DIRECT_FALLBACK_ENDPOINT
+    enabled: parseEnabled(
+      runtimeEnvAlias(env, ['HANDRAIL_APM_ENABLED'], ['HANDRAIL_RUNTIME_ENABLED'])
     ),
-    token: env.HANDRAIL_APM_TOKEN,
-    project: env.HANDRAIL_PROJECT,
-    environment: env.HANDRAIL_ENV,
-    service: env.HANDRAIL_SERVICE,
-    release: env.HANDRAIL_RELEASE,
-    sampleRate: env.HANDRAIL_APM_SAMPLE_RATE,
-    requestSampleRate: firstDefined(
-      env.HANDRAIL_APM_REQUEST_SAMPLE_RATE,
-      env.HANDRAIL_APM_TRANSACTION_SAMPLE_RATE
+    endpoint: runtimeEnvAlias(env, ['HANDRAIL_APM_ENDPOINT'], ['HANDRAIL_RUNTIME_ENDPOINT']),
+    endpointMode: runtimeEnvAlias(
+      env,
+      ['HANDRAIL_APM_ENDPOINT_MODE'],
+      ['HANDRAIL_RUNTIME_ENDPOINT_MODE']
     ),
-    exceptionSampleRate: env.HANDRAIL_APM_EXCEPTION_SAMPLE_RATE,
-    messageSampleRate: env.HANDRAIL_APM_MESSAGE_SAMPLE_RATE,
-    spanSampleRate: env.HANDRAIL_APM_SPAN_SAMPLE_RATE,
-    allowedEventTypes: env.HANDRAIL_APM_ALLOWED_EVENT_TYPES,
-    scrubberConfig: env.HANDRAIL_APM_SCRUBBER_CONFIG,
-    maxBreadcrumbs: env.HANDRAIL_APM_MAX_BREADCRUMBS,
-    batchSize: env.HANDRAIL_APM_BATCH_SIZE,
-    maxQueueSize: env.HANDRAIL_APM_MAX_QUEUE_SIZE,
-    flushIntervalMs: env.HANDRAIL_APM_FLUSH_INTERVAL_MS,
-    requestTimeoutMs: firstDefined(
-      env.HANDRAIL_APM_REQUEST_TIMEOUT_MS,
-      env.HANDRAIL_APM_FETCH_TIMEOUT_MS
+    directEndpoint: runtimeEnvAlias(
+      env,
+      ['HANDRAIL_APM_DIRECT_ENDPOINT', 'HANDRAIL_APM_DIRECT_FALLBACK_ENDPOINT'],
+      ['HANDRAIL_RUNTIME_DIRECT_ENDPOINT', 'HANDRAIL_RUNTIME_DIRECT_FALLBACK_ENDPOINT']
     ),
-    maxRetries: env.HANDRAIL_APM_MAX_RETRIES,
-    retryBaseDelayMs: env.HANDRAIL_APM_RETRY_BASE_DELAY_MS,
-    retryMaxDelayMs: env.HANDRAIL_APM_RETRY_MAX_DELAY_MS,
-    shutdownTimeoutMs: env.HANDRAIL_APM_SHUTDOWN_TIMEOUT_MS,
-    captureUnhandled: firstDefined(
-      env.HANDRAIL_APM_CAPTURE_UNHANDLED,
-      env.HANDRAIL_APM_CAPTURE_UNHANDLED_ERRORS
+    token: runtimeEnvAlias(env, ['HANDRAIL_APM_TOKEN'], ['HANDRAIL_RUNTIME_TOKEN']),
+    project: runtimeEnvAlias(env, ['HANDRAIL_PROJECT'], ['HANDRAIL_RUNTIME_PROJECT']),
+    environment: runtimeEnvAlias(env, ['HANDRAIL_ENV'], ['HANDRAIL_RUNTIME_ENV']),
+    service: runtimeEnvAlias(env, ['HANDRAIL_SERVICE'], ['HANDRAIL_RUNTIME_SERVICE']),
+    release: runtimeEnvAlias(env, ['HANDRAIL_RELEASE'], ['HANDRAIL_RUNTIME_RELEASE']),
+    sampleRate: runtimeEnvAlias(env, ['HANDRAIL_APM_SAMPLE_RATE'], ['HANDRAIL_RUNTIME_SAMPLE_RATE']),
+    requestSampleRate: runtimeEnvAlias(
+      env,
+      ['HANDRAIL_APM_REQUEST_SAMPLE_RATE', 'HANDRAIL_APM_TRANSACTION_SAMPLE_RATE'],
+      ['HANDRAIL_RUNTIME_REQUEST_SAMPLE_RATE', 'HANDRAIL_RUNTIME_TRANSACTION_SAMPLE_RATE']
+    ),
+    exceptionSampleRate: runtimeEnvAlias(
+      env,
+      ['HANDRAIL_APM_EXCEPTION_SAMPLE_RATE'],
+      ['HANDRAIL_RUNTIME_EXCEPTION_SAMPLE_RATE']
+    ),
+    messageSampleRate: runtimeEnvAlias(
+      env,
+      ['HANDRAIL_APM_MESSAGE_SAMPLE_RATE'],
+      ['HANDRAIL_RUNTIME_MESSAGE_SAMPLE_RATE']
+    ),
+    spanSampleRate: runtimeEnvAlias(
+      env,
+      ['HANDRAIL_APM_SPAN_SAMPLE_RATE'],
+      ['HANDRAIL_RUNTIME_SPAN_SAMPLE_RATE']
+    ),
+    allowedEventTypes: runtimeEnvAlias(
+      env,
+      ['HANDRAIL_APM_ALLOWED_EVENT_TYPES'],
+      ['HANDRAIL_RUNTIME_ALLOWED_EVENT_TYPES']
+    ),
+    scrubberConfig: runtimeEnvAlias(
+      env,
+      ['HANDRAIL_APM_SCRUBBER_CONFIG'],
+      ['HANDRAIL_RUNTIME_SCRUBBER_CONFIG']
+    ),
+    maxBreadcrumbs: runtimeEnvAlias(
+      env,
+      ['HANDRAIL_APM_MAX_BREADCRUMBS'],
+      ['HANDRAIL_RUNTIME_MAX_BREADCRUMBS']
+    ),
+    batchSize: runtimeEnvAlias(env, ['HANDRAIL_APM_BATCH_SIZE'], ['HANDRAIL_RUNTIME_BATCH_SIZE']),
+    maxQueueSize: runtimeEnvAlias(env, ['HANDRAIL_APM_MAX_QUEUE_SIZE'], ['HANDRAIL_RUNTIME_MAX_QUEUE_SIZE']),
+    flushIntervalMs: runtimeEnvAlias(env, ['HANDRAIL_APM_FLUSH_INTERVAL_MS'], ['HANDRAIL_RUNTIME_FLUSH_INTERVAL_MS']),
+    requestTimeoutMs: runtimeEnvAlias(
+      env,
+      ['HANDRAIL_APM_REQUEST_TIMEOUT_MS', 'HANDRAIL_APM_FETCH_TIMEOUT_MS'],
+      ['HANDRAIL_RUNTIME_REQUEST_TIMEOUT_MS', 'HANDRAIL_RUNTIME_FETCH_TIMEOUT_MS']
+    ),
+    maxRetries: runtimeEnvAlias(env, ['HANDRAIL_APM_MAX_RETRIES'], ['HANDRAIL_RUNTIME_MAX_RETRIES']),
+    retryBaseDelayMs: runtimeEnvAlias(
+      env,
+      ['HANDRAIL_APM_RETRY_BASE_DELAY_MS'],
+      ['HANDRAIL_RUNTIME_RETRY_BASE_DELAY_MS']
+    ),
+    retryMaxDelayMs: runtimeEnvAlias(
+      env,
+      ['HANDRAIL_APM_RETRY_MAX_DELAY_MS'],
+      ['HANDRAIL_RUNTIME_RETRY_MAX_DELAY_MS']
+    ),
+    shutdownTimeoutMs: runtimeEnvAlias(
+      env,
+      ['HANDRAIL_APM_SHUTDOWN_TIMEOUT_MS'],
+      ['HANDRAIL_RUNTIME_SHUTDOWN_TIMEOUT_MS']
+    ),
+    captureUnhandled: runtimeEnvAlias(
+      env,
+      ['HANDRAIL_APM_CAPTURE_UNHANDLED', 'HANDRAIL_APM_CAPTURE_UNHANDLED_ERRORS'],
+      ['HANDRAIL_RUNTIME_CAPTURE_UNHANDLED', 'HANDRAIL_RUNTIME_CAPTURE_UNHANDLED_ERRORS']
     ),
     analytics: readAnalyticsEnvOptions(env)
   });
+}
+
+function runtimeEnvAlias(env, legacyKeys, runtimeKeys) {
+  const legacyValues = legacyKeys.map((key) => env[key]);
+  const hasLegacyKey = legacyKeys.some((key) => Object.prototype.hasOwnProperty.call(env, key));
+  if (hasLegacyKey) {
+    return firstDefined(...legacyValues);
+  }
+  return firstDefined(...runtimeKeys.map((key) => env[key]));
 }
 
 function readAnalyticsEnvOptions(env) {
@@ -2091,6 +2178,7 @@ function experimentAssignmentMetadata(assignment, options = {}) {
   const rawOptions = safePlainObjectCopy(options);
   const optionExperiment = firstPlainObject(rawOptions.experiment);
   const assignmentUnit = firstPlainObject(rawAssignment.assignment_unit || rawAssignment.assignmentUnit);
+  const sourceScope = firstPlainObject(rawAssignment.source_scope || rawAssignment.sourceScope);
   const traffic = firstPlainObject(rawAssignment.traffic);
   return compactObject({
     ...optionExperiment,
@@ -2107,12 +2195,13 @@ function experimentAssignmentMetadata(assignment, options = {}) {
     assignment_unit: sanitizedAnalyticsMetadataOrUndefined(assignmentUnit, {
       blockOverrideUnsafe: true
     }),
+    source_scope: sanitizedAnalyticsMetadataOrUndefined(sourceScope, {
+      blockOverrideUnsafe: true
+    }),
     traffic: sanitizedAnalyticsMetadataOrUndefined(traffic, {
       blockOverrideUnsafe: true
     }),
-    override_metadata: sanitizedAnalyticsMetadataOrUndefined(rawAssignment.override_metadata || rawAssignment.overrideMetadata, {
-      blockOverrideUnsafe: true
-    }),
+    override_metadata: sanitizedAnalyticsOverrideMetadataOrUndefined(rawAssignment.override_metadata || rawAssignment.overrideMetadata),
     in_experiment: optionalBooleanValue(rawAssignment.in_experiment ?? rawAssignment.inExperiment),
     assigned_at: rawAssignment.assigned_at || rawAssignment.assignedAt,
     received_at: rawAssignment.received_at || rawAssignment.receivedAt
@@ -2732,6 +2821,7 @@ function sanitizeAnalyticsConversion(raw) {
 function sanitizeAnalyticsExperiment(raw) {
   const experiment = firstPlainObject(raw.experiment);
   const assignmentUnit = firstPlainObject(experiment.assignment_unit || experiment.assignmentUnit || raw.assignment_unit || raw.assignmentUnit);
+  const sourceScope = firstPlainObject(experiment.source_scope || experiment.sourceScope || raw.source_scope || raw.sourceScope);
   const traffic = firstPlainObject(experiment.traffic || raw.traffic);
   return compactObject({
     experiment_key: cleanAnalyticsString(experiment.experiment_key || experiment.experimentKey || experiment.key || raw.experiment_key || raw.experimentKey, ANALYTICS_MAX_EXPERIMENT_FIELD_LENGTH),
@@ -2748,16 +2838,59 @@ function sanitizeAnalyticsExperiment(raw) {
     assignment_unit: sanitizedAnalyticsMetadataOrUndefined(assignmentUnit, {
       blockOverrideUnsafe: true
     }),
+    source_scope: sanitizedAnalyticsMetadataOrUndefined(sourceScope, {
+      blockOverrideUnsafe: true
+    }),
     traffic: sanitizedAnalyticsMetadataOrUndefined(traffic, {
       blockOverrideUnsafe: true
     }),
-    override_metadata: sanitizedAnalyticsMetadataOrUndefined(experiment.override_metadata || experiment.overrideMetadata || raw.override_metadata || raw.overrideMetadata, {
-      blockOverrideUnsafe: true
-    }),
+    override_metadata: sanitizedAnalyticsOverrideMetadataOrUndefined(experiment.override_metadata || experiment.overrideMetadata || raw.override_metadata || raw.overrideMetadata),
     in_experiment: optionalBooleanValue(experiment.in_experiment ?? experiment.inExperiment ?? raw.in_experiment ?? raw.inExperiment),
     assigned_at: cleanIsoTimestamp(experiment.assigned_at || experiment.assignedAt || raw.assigned_at || raw.assignedAt),
     received_at: cleanIsoTimestamp(experiment.received_at || experiment.receivedAt || raw.received_at || raw.receivedAt)
   });
+}
+
+function sanitizedAnalyticsOverrideMetadataOrUndefined(value) {
+  const sanitized = sanitizedAnalyticsMetadataOrUndefined(value, {
+    blockOverrideUnsafe: true,
+    maxKeys: 32
+  });
+  if (!sanitized || Array.isArray(sanitized) || typeof sanitized !== 'object') {
+    return undefined;
+  }
+  return normalizeAnalyticsOverrideMetadataExpiry(sanitized);
+}
+
+function normalizeAnalyticsOverrideMetadataExpiry(metadata) {
+  const output = { ...metadata };
+  normalizeAnalyticsOverrideExpiryPair(output);
+  if (output.override && typeof output.override === 'object' && !Array.isArray(output.override)) {
+    output.override = { ...output.override };
+    normalizeAnalyticsOverrideExpiryPair(output.override);
+  }
+  return output;
+}
+
+function normalizeAnalyticsOverrideExpiryPair(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return;
+  }
+  if (typeof value.no_expiry !== 'boolean') {
+    delete value.no_expiry;
+  }
+  if (value.no_expiry === true) {
+    delete value.expires_at;
+    return;
+  }
+  if (value.expires_at !== undefined) {
+    const expiresAt = cleanIsoTimestamp(value.expires_at);
+    if (expiresAt) {
+      value.expires_at = expiresAt;
+    } else {
+      delete value.expires_at;
+    }
+  }
 }
 
 function sanitizedAnalyticsMetadataOrUndefined(value, options = {}) {
@@ -2799,7 +2932,10 @@ function sanitizeAnalyticsBoundedMetadata(value, options = {}, depth = 0) {
     return undefined;
   }
   const output = {};
-  for (const [rawKey, rawValue] of entries.slice(0, ANALYTICS_MAX_EXPERIMENT_METADATA_KEYS)) {
+  const maxKeys = Number.isFinite(Number(options.maxKeys))
+    ? Math.max(1, Math.min(64, Math.trunc(Number(options.maxKeys))))
+    : ANALYTICS_MAX_EXPERIMENT_METADATA_KEYS;
+  for (const [rawKey, rawValue] of entries.slice(0, maxKeys)) {
     const key = cleanAnalyticsString(rawKey, ANALYTICS_MAX_CUSTOM_PROPERTY_KEY_LENGTH);
     if (!key || (options.blockOverrideUnsafe && analyticsBlockedOverrideMetadataKey(key))) {
       continue;
@@ -2815,6 +2951,26 @@ function sanitizeAnalyticsBoundedMetadata(value, options = {}, depth = 0) {
 function analyticsBlockedOverrideMetadataKey(key) {
   const normalized = normalizeAnalyticsKeyName(key);
   if (!normalized) {
+    return true;
+  }
+  if ([
+    'raw_headers_returned',
+    'raw_ip_returned',
+    'raw_payload_returned',
+    'raw_user_agent_returned',
+    'subject_hash_kind',
+    'subject_identifiers_returned',
+    'visitor_or_session_hashes_returned'
+  ].includes(normalized)) {
+    return false;
+  }
+  if ([
+    'assignment_unit',
+    'assignment_unit_hash',
+    'session_hash',
+    'subject_hash',
+    'visitor_hash'
+  ].includes(normalized)) {
     return true;
   }
   if (analyticsBlockedPiiKey(normalized, new Set())) {
@@ -3202,7 +3358,7 @@ function sanitizeTags(tags, options = {}) {
     }
 
     const key = sanitizeTagKey(rawKey);
-    if (!key || clean[key] !== undefined) {
+    if (!key || clean[key] !== undefined || isRuntimeProductSignalFieldKey(rawKey) || isRuntimeProductSignalFieldKey(key)) {
       continue;
     }
 
@@ -3219,6 +3375,11 @@ function sanitizeTags(tags, options = {}) {
 
 function sanitizeEvent(event = {}, options = {}) {
   const safeEvent = { ...event };
+  for (const key of Object.keys(safeEvent)) {
+    if (isRuntimeProductSignalFieldKey(key)) {
+      delete safeEvent[key];
+    }
+  }
 
   if (safeEvent.message !== undefined) {
     safeEvent.message = sanitizeMessage(applyScrubberHook(options.scrubMessage, safeEvent.message, {
@@ -3370,7 +3531,7 @@ function sanitizeContext(value, options = {}, depth = 0, seen = new WeakSet()) {
   const clean = {};
   for (const [key, item] of Object.entries(value).slice(0, MAX_CONTEXT_KEYS)) {
     const cleanKey = sanitizeTagKey(key);
-    if (!cleanKey) {
+    if (!cleanKey || isRuntimeProductSignalFieldKey(key) || isRuntimeProductSignalFieldKey(cleanKey)) {
       continue;
     }
 
@@ -3405,6 +3566,20 @@ function sanitizeTagKey(key) {
 
   const normalized = key.trim().replace(/[^\w./:-]+/g, '_').slice(0, MAX_TAG_KEY_LENGTH);
   return normalized || undefined;
+}
+
+function normalizeRuntimeProductSignalFieldKey(key) {
+  if (key === undefined || key === null) {
+    return '';
+  }
+  return String(key).trim().toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function isRuntimeProductSignalFieldKey(key) {
+  const normalized = normalizeRuntimeProductSignalFieldKey(key);
+  return RUNTIME_PRODUCT_SIGNAL_FIELD_KEYS.has(normalized)
+    || normalized.endsWith('analyticskey')
+    || normalized.endsWith('analyticssourceid');
 }
 
 function sanitizeTagValue(...values) {
@@ -3490,7 +3665,7 @@ function sanitizeHeaders(headers, options = {}) {
   const clean = {};
   for (const [rawKey, rawValue] of Object.entries(headers).slice(0, DEFAULT_MAX_HEADERS)) {
     const key = sanitizeTagKey(String(rawKey).toLowerCase());
-    if (!key) {
+    if (!key || isRuntimeProductSignalFieldKey(rawKey) || isRuntimeProductSignalFieldKey(key)) {
       continue;
     }
 
@@ -3525,7 +3700,7 @@ function sanitizeQueryParams(queryParams, options = {}) {
   const clean = {};
   for (const [rawKey, rawValue] of Object.entries(queryParams).slice(0, DEFAULT_MAX_QUERY_PARAMS)) {
     const key = sanitizeTagKey(String(rawKey));
-    if (!key) {
+    if (!key || isRuntimeProductSignalFieldKey(rawKey) || isRuntimeProductSignalFieldKey(key)) {
       continue;
     }
 

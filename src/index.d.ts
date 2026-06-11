@@ -439,7 +439,8 @@ export interface HandrailExperimentOptions extends HandrailAnalyticsInput {
  * Use assignExperiment() for durable platform-backed A/B tests in generated
  * apps. experiment() does not call the assignment API and does not record
  * exposure unless the returned assignment is passed to trackExperimentExposure()
- * or assignment.expose() explicitly.
+ * or assignment.expose() explicitly. Local experiment() assignments are not
+ * durable across platform rule changes.
  */
 export interface HandrailExperimentAssignment {
   experimentKey: string;
@@ -808,7 +809,8 @@ export declare function trackExperimentExposure(
  *
  * This helper does not call the assignment API and does not record exposure
  * from assignment-only use. Prefer assignExperiment() for generated-app durable
- * A/B tests.
+ * A/B tests because local experiment() assignments do not fetch platform rules
+ * and are not durable across platform rule changes.
  */
 export declare function experiment(
   experimentKey: string,
