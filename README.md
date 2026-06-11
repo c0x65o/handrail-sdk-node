@@ -13,21 +13,35 @@ attribution, separate transports, queue/retry controls, and shutdown flushing.
 The package requires Node.js 18 or newer. Express support is optional; install
 `express` in the application only when using the Express middleware helpers.
 
-For published package installs, depend on the canonical package name:
+Current stable distribution source for app manifests:
 
 ```sh
-npm install @handrail/sdk-node
+npm install "git+https://github.com/c0x65o/handrail-sdk-node.git#de2a94eff68e2f7daec8b67c99e51397ae28b1f8"
 ```
 
-or pin it in an application manifest:
+or pin the exact source in an application manifest:
 
 ```json
 {
   "dependencies": {
-    "@handrail/sdk-node": "<version>"
+    "@handrail/sdk-node": "git+https://github.com/c0x65o/handrail-sdk-node.git#de2a94eff68e2f7daec8b67c99e51397ae28b1f8"
   }
 }
 ```
+
+Stable source contract:
+
+| Field | Value |
+| --- | --- |
+| Source type | Exact git commit |
+| Package | `@handrail/sdk-node` |
+| Package version at source | `0.1.19` |
+| Source | `git+https://github.com/c0x65o/handrail-sdk-node.git#de2a94eff68e2f7daec8b67c99e51397ae28b1f8` |
+
+The package is not currently published to the public npm registry, and this
+repository has no version tag for `0.1.19`. Until a later release item publishes
+a semver package, versioned tarball, or git tag, consuming applications should
+pin the exact git source above.
 
 For local validation from another workspace, install the package path:
 
@@ -37,9 +51,6 @@ npm install ../handrail-sdk-node
 
 This SDK repository intentionally does not commit a package-manager lockfile.
 Consuming applications own their resolved dependency graph and lockfile policy.
-
-Publishing, generated install snippet changes, and consumer dependency
-migration are out of scope for this SDK-port goal.
 
 ## ESM
 
@@ -372,35 +383,34 @@ canonical legacy install and import path for that repo, and said that any future
 rename must preserve `@handrail/apm-node` as a compatibility package or
 documented alias for a supported migration window.
 
-This port makes the scoped decision for the new Signals SDK repository: it does
-not create, publish, or document `@handrail/apm-node` as an active alias package
-for `@handrail/sdk-node` in this owner goal. Existing app consumers remain on
-their current `@handrail/apm-node` dependency and import path until a later
-consumer/package migration goal defines the compatibility-window mechanics.
+This port makes the scoped decision for the new Signals SDK repository:
+`@handrail/sdk-node` is the only supported package identity for new Product
+Signals and Runtime Signals installs. This repository does not create, publish,
+or document `@handrail/apm-node` as an active alias package for
+`@handrail/sdk-node`.
 
-Any `@handrail/apm-node` alias package, npm deprecation notice, generated
-install snippet change, consumer dependency update, or consumer import migration
-is out of scope for this SDK port.
+Legacy `@handrail/apm-node` and `handrail-apm-node-sdk` dependency paths are
+retired for active Signals installs. They remain referenced only in historical
+compatibility evidence and migration notes. Any compatibility alias package or
+npm deprecation notice belongs to a later package-release item.
 
 ## Known Consumers and Migration Boundary
 
-The only known current consumers of the legacy Node SDK are:
+Known consumer migrations for this owner goal are tracked separately from this
+SDK repository source-record item:
 
+- VLBO Website Scout
 - Hitcents Website
-- Demo app
 
-Those consumers must not be migrated as part of this SDK port. This repository is
-the target canonical package for the Handrail Signals Node SDK, but this port does
-not change consumer app dependencies, imports, generated install snippets,
-publishing configuration, or deployment state.
-
-Consumer dependency and import migration for Hitcents Website and Demo app belongs
-to a later owner goal after the `@handrail/sdk-node` port is complete. Until that
-later migration work is explicitly scoped, keep app consumer repositories and app
-package manifests unchanged.
+Those consumers should install `@handrail/sdk-node` from the stable source
+recorded in the Install section when their migration items run. This SDK source
+record does not itself edit consumer app dependencies, imports, generated
+install snippets, publishing configuration, or deployment state.
 
 This SDK-port goal is limited to the Node SDK package surface.
-Browser error capture and browser Runtime Signals are out of scope for this goal.
+Browser SDK work, browser `onerror` capture, and browser Runtime Signals are out
+of scope for this goal. Future deeper A/B testing depth beyond the current
+server assignment/exposure/conversion contract is also a separate goal.
 
 ## Experiments
 
@@ -421,6 +431,15 @@ not enqueue or send an `experiment_exposure` event by itself. Record exposure on
 at the point where the selected variant is shown or affects user-visible
 behavior, using `trackExperimentExposure(assignment, properties, options)` or
 `assignment.expose(properties, options)`.
+
+This release's A/B surface is deliberately bounded to server Product Signals:
+durable assignment through `assignExperiment()`, compatibility-only local
+assignment through `experiment()`, explicit experiment exposure, and conversion
+attribution through `trackConversion()` or assignment conversion helpers. Deeper
+A/B features such as experiment management UI/API, remote or server decisioning,
+shared cross-SDK deterministic assignment, statistical winner/lift calculations,
+guardrail metrics, and automatic delayed conversion attribution remain future
+work unless separately scoped.
 
 ## Runtime Signals Environment Aliases
 

@@ -19,34 +19,41 @@ path exists in the workspace and maps to the legacy surface. `Pending` means the
 port still needs the named target file or proof from a later owner-goal checklist
 item.
 
-Out of scope for this matrix and goal: Hitcents Website migration, Demo app
-migration, browser SDK work, browser Runtime Signals/error capture, publishing,
-deployment, `@handrail/apm-node` alias package publishing, generated install
-snippet changes, consumer dependency/import migration, and Handrail
-configuration mutation.
+Out of scope for this matrix entry: browser SDK work, browser `onerror` capture,
+browser Runtime Signals/error capture, future deeper A/B testing depth beyond the
+current server assignment/exposure/conversion contract, deployment,
+`@handrail/apm-node` alias package publishing, npm deprecation notices, consumer
+repository edits, and Handrail configuration mutation. The owner goal tracks
+generated install snippet updates and consumer dependency/import migrations as
+separate checklist items that should use the stable `@handrail/sdk-node` source
+recorded below.
 
 The legacy naming ADR kept `@handrail/apm-node` as the canonical package for the
 legacy repo and required a future rename to preserve a compatibility package or
 documented alias for a supported migration window. This Signals SDK port narrows
 that future-rename requirement: `@handrail/sdk-node` is the canonical target
-package here, but this owner goal does not create or publish an
-`@handrail/apm-node` compatibility alias. Alias mechanics and consumer migration
-belong to a later owner goal.
+package here, and this owner goal does not create or publish an
+`@handrail/apm-node` compatibility alias. Legacy `@handrail/apm-node` and
+`handrail-apm-node-sdk` dependency paths are retired for active Signals installs
+and remain in this file only as historical compatibility evidence.
 
 ## Release Evidence Mapping For `74b3ef19-bd7d-4ac6-a79e-09b2ad37c27b`
 
-This section maps the current target package, code, tests, and README guidance
-to the owner-requested Handrail Signals Node SDK release surfaces. It is release
-evidence only: it does not publish the package, migrate consumers, add browser
-Runtime Signals, mutate Handrail configuration, or claim the separate final
-owner-facing acceptance report item is complete.
+This section maps the current target package, code, tests, stable distribution
+source, and README guidance to the owner-requested Handrail Signals Node SDK
+release surfaces. It is release evidence only: it does not publish the package,
+create a tag, edit consumer repositories, add browser Runtime Signals/browser
+`onerror` capture, implement deeper A/B testing features, mutate Handrail
+configuration, or claim the separate final owner-facing acceptance report item is
+complete.
 
 Package metadata evidence:
 
 | Surface | Evidence | Release status |
 | --- | --- | --- |
 | Canonical package identity | `package.json` name `@handrail/sdk-node` and README package identity policy | Present. `@handrail/apm-node` alias package creation/publishing remains out of scope. |
-| Version source of truth | `package.json` version `0.1.18`; `src/index.cjs` package metadata lookup; `src/index.d.ts` SDK metadata declarations; `test/entrypoints.test.cjs` metadata assertions | Present. |
+| Version source of truth | `package.json` version `0.1.19`; `src/index.cjs` package metadata lookup; `src/index.d.ts` SDK metadata declarations; `test/entrypoints.test.cjs` metadata assertions | Present. |
+| Stable distribution source | README Install section; `package.json` name `@handrail/sdk-node`; package version `0.1.19`; source commit `de2a94eff68e2f7daec8b67c99e51397ae28b1f8`; origin `https://github.com/c0x65o/handrail-sdk-node.git`; npm registry check returned `E404`; local repo has no version tags | Present. Current app manifest contract is `git+https://github.com/c0x65o/handrail-sdk-node.git#de2a94eff68e2f7daec8b67c99e51397ae28b1f8` until a later release item publishes a semver package, tarball, or git tag. |
 | Dual entrypoints and declarations | `package.json` `main`, `module`, `types`, and `exports["."]` map to `src/index.cjs`, `src/index.mjs`, and `src/index.d.ts`; `test/entrypoints.test.cjs` covers CommonJS, ESM named import, ESM default import, declarations, package self-reference, and additive Signals aliases | Present. |
 | Package contents and tree-shaking metadata | `package.json` `files` allowlist includes only `src` and `README.md`; `sideEffects` is `false` | Present; pack dry-run/contents inspection is tracked by completed item `b1d79e30-6b62-4df0-a828-8645655a43c7`. |
 | Runtime and scripts | `package.json` `engines.node` is `>=18`; scripts are `check` and `test` | Present. Syntax checks are tracked by completed item `944e795d-0a6e-4729-9cdc-8649c7ceecb3`; the full target SDK suite remains separate planned item `fdfe1ff4-1d91-49af-be3f-d5a0cae7c2c5`. |
@@ -87,15 +94,25 @@ Documentation release evidence:
 | `Install`, `ESM`, `CommonJS`, and `Public API` | Installation, import modes, public API list, disabled-safe behavior, package identity, and shutdown helpers. |
 | `Runtime Signals Usage`, `Runtime Signals Environment Aliases`, `Queue and Retry Behavior`, and `Transport Separation` | Runtime configuration, APM env compatibility, additive Runtime aliases, request/error telemetry, manual capture, queue/retry/shutdown/stats, and Runtime/Product transport boundaries. |
 | `Product Signals Usage`, `Product Signals Environment`, `Experiments`, and `Transport Separation` | Product analytics configuration, page/route/screen/session/custom/conversion/exposure events, Express analytics middleware, analytics-key transport, durable assignment, explicit exposure, and Product operation independent of Runtime config. |
-| `Package Identity and Compatibility Alias Policy`, `Known Consumers and Migration Boundary`, and `Package Lockfile Policy` | No `@handrail/apm-node` alias package in this goal, no Hitcents Website or Demo app migration in this goal, browser Runtime Signals/error capture out of scope, and no committed package lockfile policy. |
+| `Install`, `Package Identity and Compatibility Alias Policy`, `Known Consumers and Migration Boundary`, and `Package Lockfile Policy` | Stable exact git commit source for `@handrail/sdk-node`, no active `@handrail/apm-node` alias package, legacy package paths documented only as retired historical compatibility evidence, consumer repository edits tracked as separate owner-goal checklist items, browser SDK/browser `onerror`/browser Runtime Signals capture out of scope, future deeper A/B testing depth out of scope, and no committed package lockfile policy. |
+
+Scope and non-goal evidence:
+
+| Boundary | Evidence | Status |
+| --- | --- | --- |
+| Server Runtime Signals completeness | README Runtime Signals Usage, Runtime Signals Environment Aliases, Transport Separation; `test/express-runtime-signals.test.cjs`; `test/runtime-capture.test.cjs`; `test/exception-capture.test.cjs`; `test/runtime-transport.test.cjs`; `test/batching-transport.test.cjs`; `test/redaction-sampling-hooks.test.cjs`; `test/fake-intake-smoke.test.cjs` | Complete for the server SDK release. Completed acceptance work request `3347e5c0-4cd8-46b9-be71-77b5f94fc689` recorded `node --check src/index.cjs src/index.mjs` and `node --test test/*.test.cjs` with TAP summary `tests 18`, `pass 18`, `fail 0`, covering Runtime request/error/manual/process capture, redaction, batching, transports, and fake intake smoke. |
+| Server Product Signals completeness | README Product Signals Usage, Experiments, Product Signals Environment, Transport Separation; `test/product-analytics.test.cjs`; `test/analytics-transport.test.cjs`; `test/analytics-assignment-transport.test.cjs`; `test/analytics-payload-builder.test.cjs`; `test/analytics-fixture-corpus.test.cjs`; `test/express-analytics-middleware.test.cjs`; `test/product-signals-configured-source-acceptance.test.cjs`; `test/fake-intake-smoke.test.cjs` | Complete for the server SDK release. Completed acceptance work request `3347e5c0-4cd8-46b9-be71-77b5f94fc689` covered Product event capture, durable `assignExperiment()` assignment, compatibility-only local `experiment()`, explicit experiment exposure, conversion attribution, Product transport separation, batching, and fake intake smoke. |
+| Browser Runtime/onerror non-goal | README Known Consumers and Migration Boundary; this matrix scope statement | Preserved. Browser SDK work, browser `onerror` capture, and browser Runtime Signals remain separate goals and are not implemented by this Node SDK release. |
+| Future deeper A/B testing non-goal | README Experiments; this matrix scope statement | Preserved. Deeper A/B features beyond the current server Product Signals assignment/exposure/conversion contract, including experiment management UI/API, remote/server decisioning, shared cross-SDK deterministic assignment, statistical winner/lift calculations, guardrails, and automatic delayed conversion attribution, remain future work unless separately scoped. |
 
 ## Package Metadata
 
 | Legacy behavior | Target evidence | Status / closing checklist area |
 | --- | --- | --- |
 | Package identity `@handrail/apm-node` is renamed to canonical Signals identity | `package.json` name is `@handrail/sdk-node` | Present; created by `9cb0c35a-fc8c-4418-92a2-691c86a9d47a`. |
-| Compatibility alias policy for `@handrail/apm-node` | `README.md` package identity policy documents that this repo does not create or publish an `@handrail/apm-node` alias package for `@handrail/sdk-node` in this goal | Present; alias package, npm deprecation, generated install snippets, and consumer dependency/import migration are deferred to a later consumer/package migration goal. |
-| Version continuity from legacy package to current target package | `package.json` version is `0.1.18`; entrypoint metadata reads the package version | Present; package metadata is current for this release-evidence item. |
+| Compatibility alias policy for `@handrail/apm-node` | `README.md` package identity policy documents that this repo does not create or publish an `@handrail/apm-node` alias package for `@handrail/sdk-node` in this goal | Present; legacy `@handrail/apm-node` and `handrail-apm-node-sdk` are retired active install paths and remain only as historical compatibility evidence. |
+| Version continuity from legacy package to current target package | `package.json` version is `0.1.19`; entrypoint metadata reads the package version | Present; package metadata is current for this release-evidence item. |
+| Stable source for app manifests | README Install section records exact git commit source `git+https://github.com/c0x65o/handrail-sdk-node.git#de2a94eff68e2f7daec8b67c99e51397ae28b1f8` for `@handrail/sdk-node` version `0.1.19` | Present; current contract is an exact commit because the public npm registry has no `@handrail/sdk-node` package and no local version tags are present. |
 | Dual CommonJS, ESM, and TypeScript entrypoints | `package.json` `main`, `module`, `types`, and `exports["."]` point to `src/index.cjs`, `src/index.mjs`, and `src/index.d.ts`; `test/entrypoints.test.cjs` covers package self-reference, CommonJS, ESM named, ESM default, declarations, and additive Signals aliases | Present; focused alias entrypoint coverage added by `6ab23e08-6ea7-4870-8b89-c2771601a666`. |
 | `sideEffects: false` | `package.json` | Present; package contents proof is tracked by completed item `b1d79e30-6b62-4df0-a828-8645655a43c7`. |
 | Node runtime `>=18` | `package.json` `engines.node` | Present; syntax/readiness proof is tracked by completed item `944e795d-0a6e-4729-9cdc-8649c7ceecb3`. |
