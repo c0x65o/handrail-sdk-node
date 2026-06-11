@@ -700,6 +700,200 @@ export type ExpressErrorRequestHandler = (
   next: ExpressNextFunction
 ) => void;
 
+export type HandrailOperationErrorCategory =
+  | 'auth'
+  | 'validation'
+  | 'approval'
+  | 'conflict'
+  | 'rate_limit'
+  | 'timeout'
+  | 'dependency'
+  | 'application'
+  | 'unknown';
+
+export interface HandrailOperationInvocationContext {
+  method: string;
+  pathAndQuery: string;
+  timestamp: string;
+  timestampMs: number;
+  projectId: string;
+  environment: string;
+  toolName: string;
+  toolVersion: string;
+  invocationId: string;
+  requestId: string;
+  auditId: string;
+  signatureKeyId: string;
+  timeoutMs: number;
+  dryRun: boolean;
+  idempotencyKey: string | null;
+  bodySha256: string;
+  approvalId: string | null;
+  actor: { type: string | null; id: string | null; display: string | null } | null;
+  traceId: string | null;
+  correlationId: string | null;
+  workRequestId: string | null;
+  ownerGoalId: string | null;
+}
+
+export interface HandrailOperationSigningCredential {
+  secret?: string | Uint8Array;
+  signingSecret?: string | Uint8Array;
+  key?: string | Uint8Array;
+  status?: 'unknown' | 'disabled' | 'expired' | string;
+  state?: 'unknown' | 'disabled' | 'expired' | string;
+  enabled?: boolean;
+  disabled?: boolean;
+  expired?: boolean;
+  expiresAt?: string | Date;
+  expires_at?: string | Date;
+  expiry?: string | Date;
+  projectId?: string | string[];
+  project_id?: string | string[];
+  project?: string | string[];
+  environment?: string | string[];
+  env?: string | string[];
+  toolName?: string | string[];
+  tool_name?: string | string[];
+  toolVersion?: string | string[];
+  tool_version?: string | string[];
+  scope?: Record<string, unknown>;
+  scopes?: Record<string, unknown>;
+}
+
+export interface HandrailOperationExpectedScope {
+  projectId?: string | string[];
+  project_id?: string | string[];
+  expectedProjectId?: string | string[];
+  environment?: string | string[];
+  env?: string | string[];
+  expectedEnvironment?: string | string[];
+  toolName?: string | string[];
+  tool_name?: string | string[];
+  expectedToolName?: string | string[];
+  toolVersion?: string | string[];
+  tool_version?: string | string[];
+  expectedToolVersion?: string | string[];
+}
+
+export type HandrailOperationKeyLookup = (
+  keyId: string,
+  context: Pick<
+    HandrailOperationInvocationContext,
+    'projectId' | 'environment' | 'toolName' | 'toolVersion' | 'signatureKeyId'
+  >
+) =>
+  | string
+  | Uint8Array
+  | HandrailOperationSigningCredential
+  | null
+  | false
+  | Promise<string | Uint8Array | HandrailOperationSigningCredential | null | false>;
+
+export interface HandrailOperationVerifyOptions extends HandrailOperationExpectedScope {
+  method: string;
+  pathAndQuery?: string;
+  path?: string;
+  url?: string;
+  originalUrl?: string;
+  headers: Record<string, string | string[] | number | undefined | null>;
+  rawBody?: string | Uint8Array | null;
+  signingSecret?: string | Uint8Array;
+  secret?: string | Uint8Array;
+  credential?: HandrailOperationSigningCredential;
+  lookupSigningKey?: HandrailOperationKeyLookup;
+  keyLookup?: HandrailOperationKeyLookup;
+  getSigningKey?: HandrailOperationKeyLookup;
+  expected?: HandrailOperationExpectedScope;
+  scope?: HandrailOperationExpectedScope;
+  replayWindowSeconds?: number;
+  toleranceSeconds?: number;
+  now?: Date | number | string | (() => Date | number | string);
+  clock?: Date | number | string | (() => Date | number | string);
+}
+
+export interface HandrailOperationVerificationError {
+  code: 'operation_signature_invalid' | 'operation_scope_forbidden' | string;
+  category: 'auth';
+  message: string;
+  retryable: false;
+  reason: string;
+  details?: Record<string, unknown>;
+}
+
+export type HandrailOperationVerificationResult =
+  | { ok: true; context: HandrailOperationInvocationContext }
+  | { ok: false; error: HandrailOperationVerificationError; context?: Partial<HandrailOperationInvocationContext> };
+
+export interface HandrailOperationAuditInput {
+  invocation_id?: string;
+  invocationId?: string;
+  audit_id?: string;
+  auditId?: string;
+  request_id?: string;
+  requestId?: string;
+  idempotency_key?: string | null;
+  idempotencyKey?: string | null;
+  dry_run?: boolean;
+  dryRun?: boolean;
+  endpoint_audit_id?: string;
+  endpointAuditId?: string;
+}
+
+export interface HandrailOperationAuditEcho {
+  invocation_id: string | null;
+  audit_id: string | null;
+  request_id: string | null;
+  idempotency_key: string | null;
+  dry_run: boolean;
+  endpoint_audit_id?: string;
+}
+
+export interface HandrailOperationSuccessEnvelope<T extends Record<string, unknown> = Record<string, unknown>> {
+  ok: true;
+  result: T;
+  audit: HandrailOperationAuditEcho;
+}
+
+export interface HandrailOperationErrorEnvelope {
+  ok: false;
+  error: {
+    code: string;
+    category: HandrailOperationErrorCategory;
+    message: string;
+    retryable: boolean;
+    details?: Record<string, unknown> | unknown[];
+  };
+  audit: HandrailOperationAuditEcho;
+}
+
+export interface HandrailOperationEnvelopeInput extends HandrailOperationAuditInput {
+  context?: Partial<HandrailOperationInvocationContext>;
+  verifiedContext?: Partial<HandrailOperationInvocationContext>;
+  verification?: { context?: Partial<HandrailOperationInvocationContext> };
+  audit?: HandrailOperationAuditInput;
+}
+
+export interface HandrailOperationSuccessEnvelopeInput<T extends Record<string, unknown> = Record<string, unknown>>
+  extends HandrailOperationEnvelopeInput {
+  result: T;
+}
+
+export interface HandrailOperationErrorEnvelopeInput extends HandrailOperationEnvelopeInput {
+  error?: {
+    code?: string;
+    category?: HandrailOperationErrorCategory | string;
+    message?: string;
+    retryable?: boolean;
+    details?: unknown;
+  };
+  code?: string;
+  category?: HandrailOperationErrorCategory | string;
+  message?: string;
+  retryable?: boolean;
+  details?: unknown;
+}
+
 export declare class HandrailApmClient implements HandrailApmClientLike {
   readonly options: HandrailApmResolvedOptions;
   readonly enabled: boolean;
@@ -835,6 +1029,15 @@ export declare function buildAnalyticsPayload(
   event?: HandrailAnalyticsInput,
   clientOrOptions?: HandrailApmClientLike | HandrailApmOptions | HandrailApmResolvedOptions | HandrailAnalyticsResolvedOptions
 ): HandrailAnalyticsPayload | null;
+export declare function verifyOperationInvocationSignature(
+  options: HandrailOperationVerifyOptions
+): Promise<HandrailOperationVerificationResult>;
+export declare function buildOperationSuccessEnvelope<T extends Record<string, unknown> = Record<string, unknown>>(
+  input: HandrailOperationSuccessEnvelopeInput<T>
+): HandrailOperationSuccessEnvelope<T>;
+export declare function buildOperationErrorEnvelope(
+  input: HandrailOperationErrorEnvelopeInput
+): HandrailOperationErrorEnvelope;
 export declare function getConfig(): HandrailApmResolvedOptions;
 export declare function getAnalyticsConfig(): HandrailAnalyticsResolvedOptions;
 export declare function getAnalyticsStats(): HandrailAnalyticsStats;
@@ -850,6 +1053,8 @@ declare const sdk: {
   addBreadcrumb: typeof addBreadcrumb;
   assignExperiment: typeof assignExperiment;
   buildAnalyticsPayload: typeof buildAnalyticsPayload;
+  buildOperationErrorEnvelope: typeof buildOperationErrorEnvelope;
+  buildOperationSuccessEnvelope: typeof buildOperationSuccessEnvelope;
   captureEvent: typeof captureEvent;
   captureException: typeof captureException;
   captureMessage: typeof captureMessage;
@@ -875,6 +1080,7 @@ declare const sdk: {
   trackConversion: typeof trackConversion;
   trackExperimentExposure: typeof trackExperimentExposure;
   uninstallProcessErrorHandlers: typeof uninstallProcessErrorHandlers;
+  verifyOperationInvocationSignature: typeof verifyOperationInvocationSignature;
 };
 
 export default sdk;

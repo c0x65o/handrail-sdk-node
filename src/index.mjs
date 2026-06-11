@@ -7,6 +7,8 @@ export const SDK_VERSION = sdk.SDK_VERSION;
 export const addBreadcrumb = sdk.addBreadcrumb;
 export const assignExperiment = sdk.assignExperiment;
 export const buildAnalyticsPayload = sdk.buildAnalyticsPayload;
+export const buildOperationErrorEnvelope = sdk.buildOperationErrorEnvelope;
+export const buildOperationSuccessEnvelope = sdk.buildOperationSuccessEnvelope;
 export const captureEvent = sdk.captureEvent;
 export const captureException = sdk.captureException;
 export const captureMessage = sdk.captureMessage;
@@ -32,5 +34,6 @@ export const track = sdk.track;
 export const trackConversion = sdk.trackConversion;
 export const trackExperimentExposure = sdk.trackExperimentExposure;
 export const uninstallProcessErrorHandlers = sdk.uninstallProcessErrorHandlers;
+export const verifyOperationInvocationSignature = sdk.verifyOperationInvocationSignature;
 
 export default sdk;

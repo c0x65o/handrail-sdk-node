@@ -55,9 +55,41 @@ const MAX_STACK_FRAMES = 50;
 const MAX_CONTEXT_DEPTH = 4;
 const MAX_CONTEXT_KEYS = 50;
 const MAX_CONTEXT_ARRAY_ITEMS = 20;
+const OPERATION_REPLAY_WINDOW_SECONDS = 300;
+const OPERATION_MAX_DETAILS_DEPTH = 4;
+const OPERATION_MAX_DETAILS_KEYS = 50;
+const OPERATION_MAX_DETAILS_ARRAY_ITEMS = 20;
+const OPERATION_MAX_DETAILS_STRING_LENGTH = 1000;
 const REDACTED = '[Redacted]';
+const OPERATION_REDACTED = '[REDACTED]';
 const TRUNCATED = '[Truncated]';
-const SENSITIVE_KEY_PATTERN = /(?:authorization|cookie|password|passwd|secret|token|api[-_]?key|access[-_]?key|session|credential|private[-_]?key)/i;
+const SENSITIVE_KEY_PATTERN = /(?:authorization|cookie|password|passwd|secret|token|signature|hmac|api[-_]?key|access[-_]?key|session|credential|private[-_]?key)/i;
+const OPERATION_ERROR_CATEGORIES = new Set([
+  'auth',
+  'validation',
+  'approval',
+  'conflict',
+  'rate_limit',
+  'timeout',
+  'dependency',
+  'application',
+  'unknown'
+]);
+const OPERATION_REQUIRED_HEADERS = [
+  'x-handrail-project-id',
+  'x-handrail-environment',
+  'x-handrail-tool-name',
+  'x-handrail-tool-version',
+  'x-handrail-invocation-id',
+  'x-handrail-request-id',
+  'x-handrail-audit-id',
+  'x-handrail-timestamp',
+  'x-handrail-body-sha256',
+  'x-handrail-signature-key-id',
+  'x-handrail-signature',
+  'x-handrail-timeout-ms',
+  'x-handrail-dry-run'
+];
 const RUNTIME_PRODUCT_SIGNAL_FIELD_KEYS = new Set([
   'eventkind',
   'analytics',
@@ -4395,6 +4427,605 @@ function cloneAnalyticsOptions(analytics) {
   };
 }
 
+async function verifyOperationInvocationSignature(options = {}) {
+  const headers = normalizeOperationHeaders(options.headers);
+  const missingHeader = OPERATION_REQUIRED_HEADERS.find((header) => !headers[header]);
+  if (missingHeader) {
+    return operationVerificationError('missing_required_header', {
+      message: 'A required Handrail operation signing header is missing.',
+      details: { header: missingHeader }
+    });
+  }
+
+  const method = String(options.method || '').trim().toUpperCase();
+  if (!method) {
+    return operationVerificationError('missing_method', {
+      message: 'The HTTP method is required.'
+    });
+  }
+
+  const pathAndQuery = normalizeOperationPathAndQuery(options);
+  if (!pathAndQuery) {
+    return operationVerificationError('missing_path_and_query', {
+      message: 'The request path and query string are required.'
+    });
+  }
+
+  const dryRun = headers['x-handrail-dry-run'];
+  if (dryRun !== 'true' && dryRun !== 'false') {
+    return operationVerificationError('invalid_dry_run_header', {
+      message: 'The Handrail dry-run header must be true or false.'
+    });
+  }
+
+  const body = normalizeOperationRawBody(options.rawBody);
+  const bodySha256 = crypto.createHash('sha256').update(body).digest('hex');
+  if (!constantTimeStringEquals(bodySha256, headers['x-handrail-body-sha256'])) {
+    return operationVerificationError('body_hash_mismatch', {
+      message: 'The Handrail operation request body hash does not match.'
+    });
+  }
+
+  const timestampMs = Date.parse(headers['x-handrail-timestamp']);
+  if (!Number.isFinite(timestampMs)) {
+    return operationVerificationError('invalid_timestamp', {
+      message: 'The Handrail operation timestamp is invalid.'
+    });
+  }
+
+  const nowMs = getOperationNowMs(options);
+  const replayWindowSeconds = Number.isFinite(Number(options.replayWindowSeconds))
+    ? Number(options.replayWindowSeconds)
+    : (Number.isFinite(Number(options.toleranceSeconds)) ? Number(options.toleranceSeconds) : OPERATION_REPLAY_WINDOW_SECONDS);
+  const timestampSkewSeconds = Math.abs(nowMs - timestampMs) / 1000;
+  if (timestampSkewSeconds > replayWindowSeconds) {
+    return operationVerificationError(timestampMs < nowMs ? 'timestamp_stale' : 'timestamp_in_future', {
+      message: 'The Handrail operation timestamp is outside the allowed replay window.'
+    });
+  }
+
+  const signature = parseOperationSignature(headers['x-handrail-signature']);
+  if (!signature) {
+    return operationVerificationError('signature_malformed', {
+      message: 'The Handrail operation signature is malformed.'
+    });
+  }
+
+  const context = buildOperationVerificationContext({
+    method,
+    pathAndQuery,
+    headers,
+    bodySha256,
+    timestampMs
+  });
+
+  const expectedScopeResult = validateExpectedOperationScope(context, options.expected || options.scope || options);
+  if (!expectedScopeResult.ok) {
+    return operationVerificationError('scope_mismatch', {
+      code: 'operation_scope_forbidden',
+      message: 'The Handrail operation request is outside the expected endpoint scope.',
+      details: expectedScopeResult.details
+    }, context);
+  }
+
+  const credentialResult = await resolveOperationSigningCredential(headers['x-handrail-signature-key-id'], context, options);
+  if (!credentialResult.ok) {
+    return operationVerificationError(credentialResult.reason, {
+      code: credentialResult.code || 'operation_signature_invalid',
+      message: credentialResult.message || 'The Handrail operation credential could not be used.',
+      details: credentialResult.details
+    }, context);
+  }
+
+  const credentialScopeResult = validateCredentialOperationScope(context, credentialResult.credential);
+  if (!credentialScopeResult.ok) {
+    return operationVerificationError('credential_scope_mismatch', {
+      code: 'operation_scope_forbidden',
+      message: 'The Handrail operation credential is outside the request scope.',
+      details: credentialScopeResult.details
+    }, context);
+  }
+
+  const canonicalString = buildOperationCanonicalString(context);
+  const expectedSignature = crypto
+    .createHmac('sha256', credentialResult.secret)
+    .update(canonicalString)
+    .digest('base64url');
+
+  if (!constantTimeStringEquals(expectedSignature, signature.value)) {
+    return operationVerificationError('signature_mismatch', {
+      message: 'The Handrail operation signature is invalid.'
+    }, context);
+  }
+
+  return {
+    ok: true,
+    context
+  };
+}
+
+function buildOperationSuccessEnvelope(input = {}) {
+  const result = input.result === undefined ? {} : input.result;
+  if (!isPlainObject(result)) {
+    throw new TypeError('Operation success result must be a JSON object.');
+  }
+
+  return {
+    ok: true,
+    result,
+    audit: buildOperationAuditEcho(input)
+  };
+}
+
+function buildOperationErrorEnvelope(input = {}) {
+  const error = input.error && typeof input.error === 'object' ? input.error : input;
+  const code = sanitizeOperationErrorCode(error.code);
+  const category = sanitizeOperationErrorCategory(error.category);
+  const message = sanitizeOperationErrorMessage(error.message);
+
+  if (!code) {
+    throw new TypeError('Operation error code must be lower snake case.');
+  }
+  if (!category) {
+    throw new TypeError(`Operation error category must be one of ${Array.from(OPERATION_ERROR_CATEGORIES).join(', ')}.`);
+  }
+  if (!message) {
+    throw new TypeError('Operation error message is required.');
+  }
+  if (typeof error.retryable !== 'boolean') {
+    throw new TypeError('Operation error retryable must be a boolean.');
+  }
+
+  const envelopeError = {
+    code,
+    category,
+    message,
+    retryable: error.retryable
+  };
+
+  const details = sanitizeOperationDetails(error.details);
+  if (details !== undefined) {
+    envelopeError.details = details;
+  }
+
+  return {
+    ok: false,
+    error: envelopeError,
+    audit: buildOperationAuditEcho(input)
+  };
+}
+
+function isPlainObject(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return false;
+  }
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function normalizeOperationHeaders(headers) {
+  const normalized = {};
+  if (!headers || typeof headers !== 'object') {
+    return normalized;
+  }
+
+  for (const [rawName, rawValue] of Object.entries(headers)) {
+    const name = String(rawName).trim().toLowerCase();
+    if (!name) {
+      continue;
+    }
+    const value = Array.isArray(rawValue) ? rawValue.join(', ') : rawValue;
+    normalized[name] = trimAsciiWhitespace(value);
+  }
+  return normalized;
+}
+
+function normalizeOperationRawBody(rawBody) {
+  if (rawBody === undefined || rawBody === null) {
+    return Buffer.alloc(0);
+  }
+  if (Buffer.isBuffer(rawBody)) {
+    return rawBody;
+  }
+  if (rawBody instanceof Uint8Array) {
+    return Buffer.from(rawBody.buffer, rawBody.byteOffset, rawBody.byteLength);
+  }
+  if (typeof rawBody === 'string') {
+    return Buffer.from(rawBody, 'utf8');
+  }
+  throw new TypeError('Operation rawBody must be a Buffer, Uint8Array, string, or empty.');
+}
+
+function normalizeOperationPathAndQuery(options) {
+  const pathAndQuery = firstDefined(
+    options.pathAndQuery,
+    options.path,
+    options.url,
+    options.originalUrl
+  );
+  if (pathAndQuery === undefined || pathAndQuery === null) {
+    return '';
+  }
+  const value = String(pathAndQuery);
+  if (!value || !value.startsWith('/')) {
+    return '';
+  }
+  return value;
+}
+
+function getOperationNowMs(options) {
+  const clock = firstDefined(options.now, options.clock);
+  const rawNow = typeof clock === 'function' ? clock() : clock;
+  if (rawNow instanceof Date) {
+    return rawNow.getTime();
+  }
+  if (typeof rawNow === 'number' && Number.isFinite(rawNow)) {
+    return rawNow;
+  }
+  if (typeof rawNow === 'string' && rawNow) {
+    const parsed = Date.parse(rawNow);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return Date.now();
+}
+
+function buildOperationVerificationContext({ method, pathAndQuery, headers, bodySha256, timestampMs }) {
+  return {
+    method,
+    pathAndQuery,
+    timestamp: headers['x-handrail-timestamp'],
+    timestampMs,
+    projectId: headers['x-handrail-project-id'],
+    environment: headers['x-handrail-environment'],
+    toolName: headers['x-handrail-tool-name'],
+    toolVersion: headers['x-handrail-tool-version'],
+    invocationId: headers['x-handrail-invocation-id'],
+    requestId: headers['x-handrail-request-id'],
+    auditId: headers['x-handrail-audit-id'],
+    signatureKeyId: headers['x-handrail-signature-key-id'],
+    timeoutMs: Number(headers['x-handrail-timeout-ms']),
+    dryRun: headers['x-handrail-dry-run'] === 'true',
+    idempotencyKey: headers['idempotency-key'] || null,
+    bodySha256,
+    approvalId: headers['x-handrail-approval-id'] || null,
+    actor: buildOperationActor(headers),
+    traceId: headers['x-handrail-trace-id'] || null,
+    correlationId: headers['x-handrail-correlation-id'] || null,
+    workRequestId: headers['x-handrail-work-request-id'] || null,
+    ownerGoalId: headers['x-handrail-owner-goal-id'] || null
+  };
+}
+
+function buildOperationActor(headers) {
+  const type = headers['x-handrail-actor-type'] || null;
+  const id = headers['x-handrail-actor-id'] || null;
+  const display = headers['x-handrail-actor-display'] || null;
+  if (!type && !id && !display) {
+    return null;
+  }
+  return { type, id, display };
+}
+
+function buildOperationCanonicalString(context) {
+  return [
+    'HANDRAIL-OPERATION-V1',
+    context.method,
+    context.pathAndQuery,
+    context.timestamp,
+    context.projectId,
+    context.environment,
+    context.toolName,
+    context.toolVersion,
+    context.invocationId,
+    context.requestId,
+    context.auditId,
+    context.dryRun ? 'true' : 'false',
+    context.idempotencyKey || '',
+    context.bodySha256
+  ].join('\n');
+}
+
+function parseOperationSignature(signatureHeader) {
+  const parts = String(signatureHeader || '').split(',');
+  if (parts.length !== 3 || parts[0] !== 'v1' || parts[1] !== 'hmac-sha256') {
+    return null;
+  }
+  const value = parts[2];
+  if (!/^[A-Za-z0-9_-]+$/.test(value)) {
+    return null;
+  }
+  return { value };
+}
+
+async function resolveOperationSigningCredential(keyId, context, options) {
+  if (options.signingSecret || options.secret) {
+    return {
+      ok: true,
+      secret: options.signingSecret || options.secret,
+      credential: options.credential || null
+    };
+  }
+
+  const lookup = options.lookupSigningKey || options.keyLookup || options.getSigningKey;
+  if (typeof lookup !== 'function') {
+    return {
+      ok: false,
+      reason: 'signing_secret_missing',
+      message: 'No Handrail operation signing secret or key lookup callback was provided.'
+    };
+  }
+
+  const credential = await lookup(keyId, {
+    projectId: context.projectId,
+    environment: context.environment,
+    toolName: context.toolName,
+    toolVersion: context.toolVersion,
+    signatureKeyId: keyId
+  });
+  if (!credential) {
+    return {
+      ok: false,
+      reason: 'credential_unknown',
+      message: 'The Handrail operation signing key is unknown.',
+      details: { key_id: keyId }
+    };
+  }
+  if (typeof credential === 'string' || Buffer.isBuffer(credential) || credential instanceof Uint8Array) {
+    return { ok: true, secret: credential, credential: null };
+  }
+
+  const status = String(credential.status || credential.state || '').trim().toLowerCase();
+  if (status === 'unknown') {
+    return {
+      ok: false,
+      reason: 'credential_unknown',
+      message: 'The Handrail operation signing key is unknown.',
+      details: { key_id: keyId }
+    };
+  }
+  if (status === 'disabled' || credential.disabled === true || credential.enabled === false) {
+    return {
+      ok: false,
+      reason: 'credential_disabled',
+      message: 'The Handrail operation signing key is disabled.',
+      details: { key_id: keyId }
+    };
+  }
+  if (status === 'expired' || credential.expired === true || operationCredentialExpired(credential, getOperationNowMs(options))) {
+    return {
+      ok: false,
+      reason: 'credential_expired',
+      message: 'The Handrail operation signing key is expired.',
+      details: { key_id: keyId }
+    };
+  }
+
+  const secret = credential.signingSecret || credential.secret || credential.key;
+  if (!secret) {
+    return {
+      ok: false,
+      reason: 'credential_secret_missing',
+      message: 'The Handrail operation signing credential does not include a usable secret.'
+    };
+  }
+
+  return { ok: true, secret, credential };
+}
+
+function operationCredentialExpired(credential, nowMs) {
+  const expiresAt = credential.expiresAt || credential.expires_at || credential.expiry || credential.expiredAt || credential.expired_at;
+  if (!expiresAt) {
+    return false;
+  }
+  const expiresAtMs = expiresAt instanceof Date ? expiresAt.getTime() : Date.parse(String(expiresAt));
+  return Number.isFinite(expiresAtMs) && expiresAtMs <= nowMs;
+}
+
+function validateExpectedOperationScope(context, expected) {
+  return validateOperationScope(context, normalizeExpectedOperationScope(expected));
+}
+
+function validateCredentialOperationScope(context, credential) {
+  if (!credential || typeof credential !== 'object') {
+    return { ok: true };
+  }
+  const scope = {
+    ...(credential.scope && typeof credential.scope === 'object' ? credential.scope : {}),
+    ...(credential.scopes && typeof credential.scopes === 'object' && !Array.isArray(credential.scopes) ? credential.scopes : {}),
+    projectId: firstDefined(credential.projectId, credential.project_id, credential.project, credential.scope && (credential.scope.projectId || credential.scope.project_id)),
+    environment: firstDefined(credential.environment, credential.env, credential.scope && (credential.scope.environment || credential.scope.env)),
+    toolName: firstDefined(credential.toolName, credential.tool_name, credential.scope && (credential.scope.toolName || credential.scope.tool_name)),
+    toolVersion: firstDefined(credential.toolVersion, credential.tool_version, credential.scope && (credential.scope.toolVersion || credential.scope.tool_version))
+  };
+  return validateOperationScope(context, scope);
+}
+
+function normalizeExpectedOperationScope(expected) {
+  if (!expected || typeof expected !== 'object') {
+    return {};
+  }
+  return {
+    projectId: firstDefined(expected.projectId, expected.project_id, expected.expectedProjectId),
+    environment: firstDefined(expected.environment, expected.env, expected.expectedEnvironment),
+    toolName: firstDefined(expected.toolName, expected.tool_name, expected.expectedToolName),
+    toolVersion: firstDefined(expected.toolVersion, expected.tool_version, expected.expectedToolVersion)
+  };
+}
+
+function validateOperationScope(context, scope) {
+  const mismatches = [];
+  if (!operationScopeValueMatches(scope.projectId, context.projectId)) {
+    mismatches.push('project_id');
+  }
+  if (!operationScopeValueMatches(scope.environment, context.environment)) {
+    mismatches.push('environment');
+  }
+  if (!operationScopeValueMatches(scope.toolName, context.toolName)) {
+    mismatches.push('tool_name');
+  }
+  if (scope.toolVersion !== undefined && scope.toolVersion !== null && scope.toolVersion !== ''
+    && !operationScopeValueMatches(scope.toolVersion, context.toolVersion)) {
+    mismatches.push('tool_version');
+  }
+  return mismatches.length > 0
+    ? { ok: false, details: { mismatches } }
+    : { ok: true };
+}
+
+function operationScopeValueMatches(expected, actual) {
+  if (expected === undefined || expected === null || expected === '') {
+    return true;
+  }
+  if (Array.isArray(expected)) {
+    return expected.map(String).includes(String(actual));
+  }
+  return String(expected) === String(actual);
+}
+
+function operationVerificationError(reason, overrides = {}, context) {
+  return {
+    ok: false,
+    error: {
+      code: overrides.code || 'operation_signature_invalid',
+      category: overrides.category || 'auth',
+      message: overrides.message || 'The Handrail operation signature is invalid.',
+      retryable: false,
+      reason,
+      ...(overrides.details ? { details: sanitizeOperationDetails(overrides.details) } : {})
+    },
+    ...(context ? { context: operationSafeContext(context) } : {})
+  };
+}
+
+function operationSafeContext(context) {
+  return {
+    method: context.method,
+    pathAndQuery: context.pathAndQuery,
+    projectId: context.projectId,
+    environment: context.environment,
+    toolName: context.toolName,
+    toolVersion: context.toolVersion,
+    invocationId: context.invocationId,
+    requestId: context.requestId,
+    auditId: context.auditId,
+    signatureKeyId: context.signatureKeyId,
+    dryRun: context.dryRun,
+    idempotencyKey: context.idempotencyKey,
+    bodySha256: context.bodySha256
+  };
+}
+
+function buildOperationAuditEcho(input = {}) {
+  const context = operationContextFromInput(input);
+  const audit = input.audit && typeof input.audit === 'object' ? input.audit : {};
+  const echo = {
+    invocation_id: firstDefined(audit.invocation_id, audit.invocationId, input.invocation_id, input.invocationId, context.invocationId, context.invocation_id) || null,
+    audit_id: firstDefined(audit.audit_id, audit.auditId, input.audit_id, input.auditId, context.auditId, context.audit_id) || null,
+    request_id: firstDefined(audit.request_id, audit.requestId, input.request_id, input.requestId, context.requestId, context.request_id) || null,
+    idempotency_key: firstDefined(audit.idempotency_key, audit.idempotencyKey, input.idempotency_key, input.idempotencyKey, context.idempotencyKey, context.idempotency_key) || null,
+    dry_run: Boolean(firstDefined(audit.dry_run, audit.dryRun, input.dry_run, input.dryRun, context.dryRun, context.dry_run, false))
+  };
+
+  const endpointAuditId = firstDefined(audit.endpoint_audit_id, audit.endpointAuditId, input.endpoint_audit_id, input.endpointAuditId);
+  if (endpointAuditId) {
+    echo.endpoint_audit_id = String(endpointAuditId);
+  }
+  return echo;
+}
+
+function operationContextFromInput(input = {}) {
+  if (input.context && typeof input.context === 'object') {
+    return input.context;
+  }
+  if (input.verifiedContext && typeof input.verifiedContext === 'object') {
+    return input.verifiedContext;
+  }
+  if (input.verification && input.verification.context && typeof input.verification.context === 'object') {
+    return input.verification.context;
+  }
+  return {};
+}
+
+function sanitizeOperationErrorCode(code) {
+  const value = String(code || '').trim();
+  return /^[a-z][a-z0-9_]{0,127}$/.test(value) ? value : '';
+}
+
+function sanitizeOperationErrorCategory(category) {
+  const value = String(category || '').trim();
+  return OPERATION_ERROR_CATEGORIES.has(value) ? value : '';
+}
+
+function sanitizeOperationErrorMessage(message) {
+  const value = sanitizeMessage(message);
+  if (!value) {
+    return '';
+  }
+  return value.slice(0, OPERATION_MAX_DETAILS_STRING_LENGTH);
+}
+
+function sanitizeOperationDetails(value, depth = 0, seen = new WeakSet()) {
+  if (value === undefined || value === null) {
+    return value === null ? null : undefined;
+  }
+  if (typeof value === 'string') {
+    return value.slice(0, OPERATION_MAX_DETAILS_STRING_LENGTH);
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return Number.isFinite(value) || typeof value !== 'number' ? value : undefined;
+  }
+  if (Array.isArray(value)) {
+    if (depth >= OPERATION_MAX_DETAILS_DEPTH) {
+      return TRUNCATED;
+    }
+    return value
+      .slice(0, OPERATION_MAX_DETAILS_ARRAY_ITEMS)
+      .map((item) => sanitizeOperationDetails(item, depth + 1, seen))
+      .filter((item) => item !== undefined);
+  }
+  if (typeof value !== 'object') {
+    return undefined;
+  }
+  if (seen.has(value)) {
+    return TRUNCATED;
+  }
+  seen.add(value);
+  if (depth >= OPERATION_MAX_DETAILS_DEPTH) {
+    return TRUNCATED;
+  }
+
+  const output = {};
+  for (const [rawKey, rawValue] of Object.entries(value).slice(0, OPERATION_MAX_DETAILS_KEYS)) {
+    const key = sanitizeTagKey(rawKey);
+    if (!key) {
+      continue;
+    }
+    output[key] = isSensitiveKey(key) ? OPERATION_REDACTED : sanitizeOperationDetails(rawValue, depth + 1, seen);
+    if (output[key] === undefined) {
+      delete output[key];
+    }
+  }
+  return output;
+}
+
+function trimAsciiWhitespace(value) {
+  if (value === undefined || value === null) {
+    return '';
+  }
+  return String(value).replace(/^[\t\n\f\r ]+|[\t\n\f\r ]+$/g, '');
+}
+
+function constantTimeStringEquals(left, right) {
+  const leftBuffer = Buffer.from(String(left || ''), 'utf8');
+  const rightBuffer = Buffer.from(String(right || ''), 'utf8');
+  if (leftBuffer.length !== rightBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
 module.exports = {
   HandrailApmClient,
   HandrailSignalsClient: HandrailApmClient,
@@ -4403,6 +5034,8 @@ module.exports = {
   addBreadcrumb,
   assignExperiment,
   buildAnalyticsPayload,
+  buildOperationErrorEnvelope,
+  buildOperationSuccessEnvelope,
   captureEvent,
   captureException,
   captureMessage,
@@ -4427,5 +5060,6 @@ module.exports = {
   track,
   trackConversion,
   trackExperimentExposure,
-  uninstallProcessErrorHandlers
+  uninstallProcessErrorHandlers,
+  verifyOperationInvocationSignature
 };

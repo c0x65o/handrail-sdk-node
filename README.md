@@ -16,7 +16,7 @@ The package requires Node.js 18 or newer. Express support is optional; install
 Current stable distribution source for app manifests:
 
 ```sh
-npm install "git+https://github.com/c0x65o/handrail-sdk-node.git#de2a94eff68e2f7daec8b67c99e51397ae28b1f8"
+npm install "git+https://github.com/c0x65o/handrail-sdk-node.git#7c42d521e448b27e0f7250d6fcf9205a4b144b0e"
 ```
 
 or pin the exact source in an application manifest:
@@ -24,7 +24,7 @@ or pin the exact source in an application manifest:
 ```json
 {
   "dependencies": {
-    "@handrail/sdk-node": "git+https://github.com/c0x65o/handrail-sdk-node.git#de2a94eff68e2f7daec8b67c99e51397ae28b1f8"
+    "@handrail/sdk-node": "git+https://github.com/c0x65o/handrail-sdk-node.git#7c42d521e448b27e0f7250d6fcf9205a4b144b0e"
   }
 }
 ```
@@ -35,11 +35,11 @@ Stable source contract:
 | --- | --- |
 | Source type | Exact git commit |
 | Package | `@handrail/sdk-node` |
-| Package version at source | `0.1.19` |
-| Source | `git+https://github.com/c0x65o/handrail-sdk-node.git#de2a94eff68e2f7daec8b67c99e51397ae28b1f8` |
+| Package version at source | `0.1.21` |
+| Source | `git+https://github.com/c0x65o/handrail-sdk-node.git#7c42d521e448b27e0f7250d6fcf9205a4b144b0e` |
 
 The package is not currently published to the public npm registry, and this
-repository has no version tag for `0.1.19`. Until a later release item publishes
+repository has no version tag for `0.1.21`. Until a later release item publishes
 a semver package, versioned tarball, or git tag, consuming applications should
 pin the exact git source above.
 
@@ -186,6 +186,57 @@ run().catch((error) => {
 });
 ```
 
+## Project Operation Endpoints
+
+Project-owned operation endpoints can verify Handrail invocation signatures
+before parsing or executing a request, then return typed response envelopes.
+
+```js
+import {
+  verifyOperationInvocationSignature,
+  buildOperationSuccessEnvelope,
+  buildOperationErrorEnvelope
+} from '@handrail/sdk-node';
+
+app.post('/operations/billing/refund', express.raw({ type: 'application/json' }), async (req, res) => {
+  const verification = await verifyOperationInvocationSignature({
+    method: req.method,
+    pathAndQuery: req.originalUrl,
+    headers: req.headers,
+    rawBody: req.body,
+    lookupSigningKey: async (keyId) => {
+      return await loadOperationSigningCredential(keyId);
+    },
+    expected: {
+      projectId: process.env.HANDRAIL_PROJECT_ID,
+      environment: 'production',
+      toolName: 'billing.refund_invoice',
+      toolVersion: '1'
+    }
+  });
+
+  if (!verification.ok) {
+    return res.status(401).json(buildOperationErrorEnvelope({
+      error: {
+        code: verification.error.code,
+        category: verification.error.category,
+        message: verification.error.message,
+        retryable: verification.error.retryable
+      },
+      context: verification.context
+    }));
+  }
+
+  const body = JSON.parse(req.body.toString('utf8'));
+  const result = await refundInvoice(body.input, verification.context);
+
+  return res.status(200).json(buildOperationSuccessEnvelope({
+    result,
+    context: verification.context
+  }));
+});
+```
+
 ## Public API
 
 The exported API is available from ESM named imports, the ESM default import,
@@ -229,6 +280,13 @@ and CommonJS `require('@handrail/sdk-node')`.
   by this SDK.
 - `buildAnalyticsPayload(event, clientOrOptions)` builds a Product Signals
   payload without sending it.
+- `verifyOperationInvocationSignature(options)` verifies Handrail project
+  operation invocation headers, exact raw-body SHA-256, HMAC signature, replay
+  window, signing key state, and expected scope.
+- `buildOperationSuccessEnvelope({ result, context })` builds the project
+  operation success envelope with audit correlation echo.
+- `buildOperationErrorEnvelope({ error, context })` builds the project
+  operation error envelope with allowed categories and bounded safe details.
 - `page(pathOrOptions, options)` captures a Product Signals page or route view.
 - `track(eventName, properties, options)` captures a Product Signals custom
   event.
