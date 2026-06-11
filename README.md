@@ -377,22 +377,21 @@ process.on('SIGTERM', async () => {
 port. The package metadata in this repository should continue to use
 `@handrail/sdk-node` as the package name.
 
-The legacy `handrail-apm-node-sdk` ADR
-`docs/adr/0001-node-sdk-package-naming.md` kept `@handrail/apm-node` as the
-canonical legacy install and import path for that repo, and said that any future
-rename must preserve `@handrail/apm-node` as a compatibility package or
-documented alias for a supported migration window.
+The historical APM package naming ADR kept a different canonical install and
+import path for the retired legacy repository, and said that any future rename
+must preserve a compatibility package or documented alias for a supported
+migration window.
 
 This port makes the scoped decision for the new Signals SDK repository:
 `@handrail/sdk-node` is the only supported package identity for new Product
 Signals and Runtime Signals installs. This repository does not create, publish,
-or document `@handrail/apm-node` as an active alias package for
+or document a retired APM import path as an active alias package for
 `@handrail/sdk-node`.
 
-Legacy `@handrail/apm-node` and `handrail-apm-node-sdk` dependency paths are
-retired for active Signals installs. They remain referenced only in historical
-compatibility evidence and migration notes. Any compatibility alias package or
-npm deprecation notice belongs to a later package-release item.
+Retired APM dependency paths are not supported for active Signals installs.
+Their exact historical names remain only in compatibility evidence and migration
+notes. Any compatibility alias package or npm deprecation notice belongs to a
+later package-release item.
 
 ## Known Consumers and Migration Boundary
 
