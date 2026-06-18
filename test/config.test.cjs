@@ -236,3 +236,66 @@ test('current-client helpers expose resolved analytics config without enabling R
   assert.equal(handrail.getAnalyticsConfig().key, 'write-key');
   assert.equal(handrail.getAnalyticsConfig().sampleRate, 0.25);
 });
+
+test('QuickBooks config resolves canonical service URLs by environment', () => {
+  const staging = handrail.loadQuickBooksConfigFromEnv({
+    HANDRAIL_QBO_SERVICE_ENV: 'staging',
+    HANDRAIL_QBO_PROVIDER_MODE: 'sandbox',
+    HANDRAIL_QBO_API_KEY: 'qbo-key'
+  });
+
+  assert.equal(staging.serviceEnvironment, 'staging');
+  assert.equal(staging.serviceUrl, 'https://quickbooks.hitcents.staging.handrail-daas.com');
+  assert.equal(staging.providerMode, 'sandbox');
+  assert.equal(staging.apiKey, 'qbo-key');
+  assert.equal(staging.localOverride, false);
+
+  const production = handrail.loadQuickBooksConfigFromEnv({
+    HANDRAIL_QBO_SERVICE_ENV: 'production',
+    HANDRAIL_QBO_PROVIDER_MODE: 'production',
+    HANDRAIL_QBO_API_KEY: 'qbo-key'
+  });
+
+  assert.equal(production.serviceEnvironment, 'production');
+  assert.equal(production.serviceUrl, 'https://quickbooks.handrail-daas.com');
+  assert.equal(production.providerMode, 'production');
+});
+
+test('QuickBooks base URL is an explicit local override only', () => {
+  const config = handrail.loadQuickBooksConfigFromEnv({
+    HANDRAIL_QBO_SERVICE_ENV: 'staging',
+    HANDRAIL_QBO_API_KEY: 'qbo-key',
+    HANDRAIL_QBO_BASE_URL: 'http://127.0.0.1:6062'
+  });
+
+  assert.equal(config.serviceEnvironment, 'staging');
+  assert.equal(config.serviceUrl, 'http://127.0.0.1:6062');
+  assert.equal(config.localOverride, true);
+});
+
+test('QuickBooks tenant client sends tenant-scoped requests with API key auth', async () => {
+  const calls = [];
+  const client = handrail.createQuickBooksClient({
+    serviceEnvironment: 'staging',
+    apiKey: 'qbo-key',
+    fetch: async (url, init) => {
+      calls.push({ url, init });
+      return {
+        ok: true,
+        status: 202,
+        text: async () => JSON.stringify({ id: 'job-1' })
+      };
+    }
+  });
+
+  const result = await client.tenant('tenant-hitcents').sync.start({ entities: ['items'] });
+
+  assert.deepEqual(result, { id: 'job-1' });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, 'https://quickbooks.hitcents.staging.handrail-daas.com/api/tenants/tenant-hitcents/sync/jobs');
+  assert.equal(calls[0].init.method, 'POST');
+  assert.equal(calls[0].init.headers.authorization, 'Bearer qbo-key');
+  assert.equal(calls[0].init.headers['x-handrail-qbo-provider-mode'], 'sandbox');
+  assert.equal(calls[0].init.headers['content-type'], 'application/json');
+  assert.equal(calls[0].init.body, JSON.stringify({ entities: ['items'] }));
+});

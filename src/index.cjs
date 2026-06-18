@@ -16,9 +16,14 @@ const DEFAULT_MAX_RETRIES = 2;
 const DEFAULT_RETRY_BASE_DELAY_MS = 250;
 const DEFAULT_RETRY_MAX_DELAY_MS = 5000;
 const DEFAULT_SHUTDOWN_TIMEOUT_MS = 3000;
+const DEFAULT_QUICKBOOKS_REQUEST_TIMEOUT_MS = 10000;
 const DEFAULT_APM_ENDPOINT_MODE = 'gateway';
 const DEFAULT_APM_DIRECT_ENDPOINT = '/api/apm/events';
 const DEFAULT_ANALYTICS_ASSIGNMENT_ENDPOINT = '/api/analytics/experiments/assign';
+const QUICKBOOKS_SERVICE_URLS = Object.freeze({
+  staging: 'https://quickbooks.hitcents.staging.handrail-daas.com',
+  production: 'https://quickbooks.handrail-daas.com'
+});
 const DEFAULT_MAX_TAGS = 25;
 const DEFAULT_MAX_HEADERS = 40;
 const DEFAULT_MAX_QUERY_PARAMS = 40;
@@ -1075,6 +1080,70 @@ function createClient(options = {}) {
   return new HandrailApmClient(options);
 }
 
+function createQuickBooksClient(options = {}) {
+  return new HandrailQuickBooksClient(options);
+}
+
+class HandrailQuickBooksClient {
+  constructor(options = {}) {
+    this.options = normalizeQuickBooksOptions(options, process.env);
+  }
+
+  tenant(tenantId) {
+    const id = normalizeQuickBooksTenantId(tenantId);
+    return new HandrailQuickBooksTenantClient(this, id);
+  }
+
+  async request(path, init = {}) {
+    return quickBooksJsonRequest(this.options, path, init);
+  }
+
+  getConfig() {
+    return {
+      serviceEnvironment: this.options.serviceEnvironment,
+      serviceUrl: this.options.serviceUrl,
+      providerMode: this.options.providerMode,
+      hasApiKey: Boolean(this.options.apiKey),
+      localOverride: this.options.localOverride
+    };
+  }
+}
+
+class HandrailQuickBooksTenantClient {
+  constructor(client, tenantId) {
+    this.client = client;
+    this.tenantId = tenantId;
+    this.sync = {
+      start: (payload = {}, init = {}) => this.request('/sync/jobs', {
+        method: 'POST',
+        body: payload,
+        ...init
+      }),
+      get: (jobId, init = {}) => {
+        const id = encodeURIComponent(normalizeQuickBooksTenantId(jobId, 'jobId'));
+        return this.request(`/sync/jobs/${id}`, init);
+      }
+    };
+  }
+
+  async request(path, init = {}) {
+    const tenantPath = `/api/tenants/${encodeURIComponent(this.tenantId)}${quickBooksPath(path)}`;
+    return quickBooksJsonRequest(this.client.options, tenantPath, init);
+  }
+
+  status(init = {}) {
+    return this.request('/status', init);
+  }
+
+  items(init = {}) {
+    return this.request('/items', init);
+  }
+
+  profitAndLoss(init = {}) {
+    return this.request('/reports/profit-and-loss', init);
+  }
+}
+
 function init(options = {}) {
   currentClient = createClient(options);
   return currentClient;
@@ -1321,6 +1390,144 @@ function uninstallProcessErrorHandlers(clientOrOptions) {
 
 function loadConfigFromEnv(env = process.env, overrides = {}) {
   return normalizeOptions(overrides, env);
+}
+
+function loadQuickBooksConfigFromEnv(env = process.env, overrides = {}) {
+  return normalizeQuickBooksOptions(overrides, env);
+}
+
+function normalizeQuickBooksOptions(options = {}, env = process.env) {
+  const serviceEnvironment = normalizeQuickBooksServiceEnvironment(
+    firstDefined(options.serviceEnvironment, options.service_environment, env.HANDRAIL_QBO_SERVICE_ENV),
+    firstDefined(options.providerMode, options.provider_mode, env.HANDRAIL_QBO_PROVIDER_MODE)
+  );
+  const providerMode = normalizeQuickBooksProviderMode(
+    firstDefined(options.providerMode, options.provider_mode, env.HANDRAIL_QBO_PROVIDER_MODE),
+    serviceEnvironment
+  );
+  const localOverride = stringOrUndefined(firstDefined(options.baseUrl, options.base_url, env.HANDRAIL_QBO_BASE_URL));
+  const serviceUrl = normalizeQuickBooksServiceUrl(localOverride || QUICKBOOKS_SERVICE_URLS[serviceEnvironment]);
+  const apiKey = stringOrUndefined(firstDefined(options.apiKey, options.api_key, env.HANDRAIL_QBO_API_KEY, env.HANDRAIL_QBO_SERVICE_TOKEN));
+  const requestTimeoutMs = integerOrDefault(
+    firstDefined(options.requestTimeoutMs, options.fetchTimeoutMs, options.timeoutMs),
+    DEFAULT_QUICKBOOKS_REQUEST_TIMEOUT_MS
+  );
+
+  return {
+    serviceEnvironment,
+    service_env: serviceEnvironment,
+    serviceUrl,
+    service_url: serviceUrl,
+    providerMode,
+    provider_mode: providerMode,
+    apiKey,
+    api_key: apiKey,
+    requestTimeoutMs,
+    request_timeout_ms: requestTimeoutMs,
+    fetch: typeof options.fetch === 'function' ? options.fetch : undefined,
+    localOverride: Boolean(localOverride),
+    local_override: Boolean(localOverride)
+  };
+}
+
+function normalizeQuickBooksServiceEnvironment(value, providerMode) {
+  const raw = stringOrUndefined(value);
+  if (raw) {
+    const normalized = raw.toLowerCase();
+    if (normalized === 'stage') return 'staging';
+    if (normalized === 'prod') return 'production';
+    if (normalized === 'staging' || normalized === 'production') return normalized;
+    throw new Error("QuickBooks serviceEnvironment must be 'staging' or 'production'.");
+  }
+  const mode = stringOrUndefined(providerMode);
+  if (mode && mode.toLowerCase() === 'production') return 'production';
+  return 'staging';
+}
+
+function normalizeQuickBooksProviderMode(value, serviceEnvironment) {
+  const raw = stringOrUndefined(value);
+  if (!raw) return serviceEnvironment === 'production' ? 'production' : 'sandbox';
+  const normalized = raw.toLowerCase();
+  if (normalized === 'sandbox' || normalized === 'production') return normalized;
+  throw new Error("QuickBooks providerMode must be 'sandbox' or 'production'.");
+}
+
+function normalizeQuickBooksServiceUrl(value) {
+  const serviceUrl = stringOrUndefined(value);
+  if (!serviceUrl) throw new Error('QuickBooks service URL could not be resolved.');
+  let parsed;
+  try {
+    parsed = new URL(serviceUrl);
+  } catch (_error) {
+    throw new Error('QuickBooks service URL must be an absolute http(s) URL.');
+  }
+  if (!['http:', 'https:'].includes(parsed.protocol)) {
+    throw new Error('QuickBooks service URL must use http or https.');
+  }
+  return parsed.toString().replace(/\/+$/, '');
+}
+
+function normalizeQuickBooksTenantId(value, label = 'tenantId') {
+  const id = stringOrUndefined(value);
+  if (!id) throw new Error(`QuickBooks ${label} is required.`);
+  return id;
+}
+
+function quickBooksPath(path) {
+  const raw = String(path || '');
+  if (!raw || raw === '/') return '';
+  return raw.startsWith('/') ? raw : `/${raw}`;
+}
+
+async function quickBooksJsonRequest(options, path, init = {}) {
+  if (!options.apiKey) throw new Error('QuickBooks apiKey is required.');
+  const fetchImpl = options.fetch || globalThis.fetch;
+  if (typeof fetchImpl !== 'function') throw new Error('fetch unavailable');
+
+  const url = new URL(quickBooksPath(path), `${options.serviceUrl}/`);
+  const headers = {
+    accept: 'application/json',
+    authorization: `Bearer ${options.apiKey}`,
+    'x-handrail-qbo-provider-mode': options.providerMode,
+    ...firstPlainObject(init.headers)
+  };
+  let body = init.body;
+  if (body !== undefined && body !== null && typeof body !== 'string' && !(body instanceof Uint8Array) && !(typeof Buffer !== 'undefined' && Buffer.isBuffer(body))) {
+    body = JSON.stringify(body);
+    if (!headers['content-type'] && !headers['Content-Type']) {
+      headers['content-type'] = 'application/json';
+    }
+  }
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeout = controller ? setTimeout(() => controller.abort(), options.requestTimeoutMs) : null;
+  try {
+    const response = await fetchImpl(url.toString(), {
+      ...init,
+      headers,
+      body,
+      signal: init.signal || (controller && controller.signal)
+    });
+    const text = typeof response.text === 'function' ? await response.text() : '';
+    const payload = text ? parseJsonOrText(text) : null;
+    if (!response.ok) {
+      const error = new Error(`QuickBooks service request failed with ${response.status || 'unknown status'}.`);
+      error.status = response.status;
+      error.response = payload;
+      throw error;
+    }
+    return payload;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+function parseJsonOrText(text) {
+  try {
+    return JSON.parse(text);
+  } catch (_error) {
+    return text;
+  }
 }
 
 function normalizeOptions(options = {}, env = process.env) {
@@ -5041,6 +5248,7 @@ module.exports = {
   captureMessage,
   captureSpan,
   createClient,
+  createQuickBooksClient,
   createSignalsClient: createClient,
   experiment,
   expressAnalyticsMiddleware,
@@ -5055,6 +5263,7 @@ module.exports = {
   init,
   installProcessErrorHandlers,
   loadConfigFromEnv,
+  loadQuickBooksConfigFromEnv,
   page,
   shutdown,
   track,

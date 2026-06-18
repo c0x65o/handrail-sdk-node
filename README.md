@@ -186,6 +186,46 @@ run().catch((error) => {
 });
 ```
 
+## QuickBooks Integration Client
+
+Consumer apps should select a QuickBooks service environment and provide an API
+key issued by the QuickBooks service. They should not configure the service URL
+directly for Handrail dev, staging, or production.
+
+```js
+import { createQuickBooksClient } from '@handrail/sdk-node';
+
+const quickBooks = createQuickBooksClient({
+  serviceEnvironment: process.env.HANDRAIL_QBO_SERVICE_ENV || 'staging',
+  providerMode: process.env.HANDRAIL_QBO_PROVIDER_MODE || 'sandbox',
+  apiKey: process.env.HANDRAIL_QBO_API_KEY
+});
+
+await quickBooks
+  .tenant(tenantIdFromAppConfigOrDatabase)
+  .sync
+  .start({ entities: ['items', 'profit_and_loss'] });
+```
+
+Canonical service URLs are built into the SDK:
+
+| Service environment | URL |
+| --- | --- |
+| `staging` | `https://quickbooks.hitcents.staging.handrail-daas.com` |
+| `production` | `https://quickbooks.handrail-daas.com` |
+
+Supported consumer env keys:
+
+| Key | Purpose |
+| --- | --- |
+| `HANDRAIL_QBO_SERVICE_ENV` | `staging` or `production` QuickBooks service selection. |
+| `HANDRAIL_QBO_PROVIDER_MODE` | `sandbox` or `production` Intuit provider mode. |
+| `HANDRAIL_QBO_API_KEY` | Tenant/app-scoped API key issued by the QuickBooks service. Store as a secret. |
+
+`HANDRAIL_QBO_BASE_URL` remains supported only as an explicit local SDK/service
+development override, for example when running the QuickBooks service on
+`127.0.0.1`. It is not part of the normal consumer app contract.
+
 ## Project Operation Endpoints
 
 Project-owned operation endpoints can verify Handrail invocation signatures

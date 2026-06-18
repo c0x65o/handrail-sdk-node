@@ -2,6 +2,8 @@ export type HandrailApmEventType = 'transaction' | 'request' | 'exception' | 'me
 export type HandrailAnalyticsEventType = 'page' | 'request' | 'track' | 'conversion' | 'experiment' | string;
 export type HandrailApmLevel = 'debug' | 'info' | 'warning' | 'error' | 'fatal' | string;
 export type HandrailApmEndpointMode = 'gateway' | 'direct';
+export type HandrailQuickBooksServiceEnvironment = 'staging' | 'production';
+export type HandrailQuickBooksProviderMode = 'sandbox' | 'production';
 export type HandrailScrubberHook<T = unknown> = (
   value: T,
   context: { field?: string; eventType?: HandrailApmEventType; defaultSampleRate?: number }
@@ -92,6 +94,68 @@ export interface HandrailApmOptions {
   retryMaxDelayMs?: number;
   shutdownTimeoutMs?: number;
   fetch?: HandrailFetch;
+}
+
+export interface HandrailQuickBooksOptions {
+  serviceEnvironment?: HandrailQuickBooksServiceEnvironment | 'stage' | 'prod' | string;
+  service_environment?: HandrailQuickBooksOptions['serviceEnvironment'];
+  providerMode?: HandrailQuickBooksProviderMode | string;
+  provider_mode?: HandrailQuickBooksOptions['providerMode'];
+  apiKey?: string;
+  api_key?: string;
+  baseUrl?: string;
+  base_url?: string;
+  requestTimeoutMs?: number;
+  request_timeout_ms?: number;
+  fetchTimeoutMs?: number;
+  timeoutMs?: number;
+  fetch?: HandrailFetch;
+}
+
+export interface HandrailQuickBooksResolvedOptions {
+  serviceEnvironment: HandrailQuickBooksServiceEnvironment;
+  service_env: HandrailQuickBooksServiceEnvironment;
+  serviceUrl: string;
+  service_url: string;
+  providerMode: HandrailQuickBooksProviderMode;
+  provider_mode: HandrailQuickBooksProviderMode;
+  apiKey?: string;
+  api_key?: string;
+  requestTimeoutMs: number;
+  request_timeout_ms: number;
+  fetch?: HandrailFetch;
+  localOverride: boolean;
+  local_override: boolean;
+}
+
+export interface HandrailQuickBooksTenantClient {
+  readonly tenantId: string;
+  request(path: string, init?: HandrailQuickBooksRequestInit): Promise<unknown>;
+  status(init?: HandrailQuickBooksRequestInit): Promise<unknown>;
+  items(init?: HandrailQuickBooksRequestInit): Promise<unknown>;
+  profitAndLoss(init?: HandrailQuickBooksRequestInit): Promise<unknown>;
+  sync: {
+    start(payload?: Record<string, unknown>, init?: HandrailQuickBooksRequestInit): Promise<unknown>;
+    get(jobId: string, init?: HandrailQuickBooksRequestInit): Promise<unknown>;
+  };
+}
+
+export interface HandrailQuickBooksClient {
+  readonly options: HandrailQuickBooksResolvedOptions;
+  tenant(tenantId: string): HandrailQuickBooksTenantClient;
+  request(path: string, init?: HandrailQuickBooksRequestInit): Promise<unknown>;
+  getConfig(): Pick<
+    HandrailQuickBooksResolvedOptions,
+    'serviceEnvironment' | 'serviceUrl' | 'providerMode' | 'localOverride'
+  > & { hasApiKey: boolean };
+}
+
+export interface HandrailQuickBooksRequestInit {
+  method?: string;
+  headers?: Record<string, string>;
+  body?: unknown;
+  signal?: unknown;
+  [key: string]: unknown;
 }
 
 export interface HandrailAnalyticsOptions {
@@ -951,6 +1015,7 @@ export declare const SDK_VERSION: string;
 
 export declare function createClient(options?: HandrailApmOptions): HandrailApmClient;
 export declare const createSignalsClient: typeof createClient;
+export declare function createQuickBooksClient(options?: HandrailQuickBooksOptions): HandrailQuickBooksClient;
 export declare function init(options?: HandrailApmOptions): HandrailApmClient;
 export declare function getCurrentClient(): HandrailApmClient;
 export declare function installProcessErrorHandlers(
@@ -964,6 +1029,10 @@ export declare function loadConfigFromEnv(
   env?: Record<string, string | undefined>,
   overrides?: HandrailApmOptions
 ): HandrailApmResolvedOptions;
+export declare function loadQuickBooksConfigFromEnv(
+  env?: Record<string, string | undefined>,
+  overrides?: HandrailQuickBooksOptions
+): HandrailQuickBooksResolvedOptions;
 export declare function expressMiddleware(
   clientOrOptions?: HandrailApmClientLike | HandrailApmOptions
 ): ExpressRequestHandler;
@@ -1060,6 +1129,7 @@ declare const sdk: {
   captureMessage: typeof captureMessage;
   captureSpan: typeof captureSpan;
   createClient: typeof createClient;
+  createQuickBooksClient: typeof createQuickBooksClient;
   createSignalsClient: typeof createSignalsClient;
   experiment: typeof experiment;
   expressAnalyticsMiddleware: typeof expressAnalyticsMiddleware;
@@ -1074,6 +1144,7 @@ declare const sdk: {
   init: typeof init;
   installProcessErrorHandlers: typeof installProcessErrorHandlers;
   loadConfigFromEnv: typeof loadConfigFromEnv;
+  loadQuickBooksConfigFromEnv: typeof loadQuickBooksConfigFromEnv;
   page: typeof page;
   shutdown: typeof shutdown;
   track: typeof track;

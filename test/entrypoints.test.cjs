@@ -17,6 +17,7 @@ const LEGACY_PUBLIC_EXPORTS = [
   'captureMessage',
   'captureSpan',
   'createClient',
+  'createQuickBooksClient',
   'experiment',
   'expressAnalyticsMiddleware',
   'expressErrorHandler',
@@ -30,6 +31,7 @@ const LEGACY_PUBLIC_EXPORTS = [
   'init',
   'installProcessErrorHandlers',
   'loadConfigFromEnv',
+  'loadQuickBooksConfigFromEnv',
   'page',
   'shutdown',
   'track',
@@ -131,6 +133,8 @@ test('TypeScript declarations cover legacy names and Signals aliases', () => {
   assert.match(declarations, /export declare const createSignalsClient: typeof createClient;/);
   assert.match(declarations, /HandrailSignalsClient: typeof HandrailSignalsClient;/);
   assert.match(declarations, /createSignalsClient: typeof createSignalsClient;/);
+  assert.match(declarations, /export declare function createQuickBooksClient/);
+  assert.match(declarations, /export declare function loadQuickBooksConfigFromEnv/);
   assert.match(declarations, /export declare const SDK_NAME: '@handrail\/sdk-node';/);
   assert.match(declarations, /declare const sdk: \{/);
 
