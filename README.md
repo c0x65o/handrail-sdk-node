@@ -16,7 +16,7 @@ The package requires Node.js 18 or newer. Express support is optional; install
 Current stable distribution source for app manifests:
 
 ```sh
-npm install "git+https://github.com/c0x65o/handrail-sdk-node.git#7c42d521e448b27e0f7250d6fcf9205a4b144b0e"
+npm install "git+https://github.com/c0x65o/handrail-sdk-node.git#02b022105438ae35fe8995578daf60949d474826"
 ```
 
 or pin the exact source in an application manifest:
@@ -24,7 +24,7 @@ or pin the exact source in an application manifest:
 ```json
 {
   "dependencies": {
-    "@handrail/sdk-node": "git+https://github.com/c0x65o/handrail-sdk-node.git#7c42d521e448b27e0f7250d6fcf9205a4b144b0e"
+    "@handrail/sdk-node": "git+https://github.com/c0x65o/handrail-sdk-node.git#02b022105438ae35fe8995578daf60949d474826"
   }
 }
 ```
@@ -35,11 +35,11 @@ Stable source contract:
 | --- | --- |
 | Source type | Exact git commit |
 | Package | `@handrail/sdk-node` |
-| Package version at source | `0.1.21` |
-| Source | `git+https://github.com/c0x65o/handrail-sdk-node.git#7c42d521e448b27e0f7250d6fcf9205a4b144b0e` |
+| Package version at source | `0.1.24` |
+| Source | `git+https://github.com/c0x65o/handrail-sdk-node.git#02b022105438ae35fe8995578daf60949d474826` |
 
 The package is not currently published to the public npm registry, and this
-repository has no version tag for `0.1.21`. Until a later release item publishes
+repository has no version tag for `0.1.24`. Until a later release item publishes
 a semver package, versioned tarball, or git tag, consuming applications should
 pin the exact git source above.
 

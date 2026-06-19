@@ -1,6 +1,6 @@
 {
   "name": "@handrail/sdk-node",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "description": "Handrail Signals Node SDK for Product Signals, Runtime Signals, analytics, experimentation, and Express services.",
   "license": "UNLICENSED",
   "type": "module",
