@@ -101,6 +101,8 @@ export interface HandrailQuickBooksOptions {
   service_environment?: HandrailQuickBooksOptions['serviceEnvironment'];
   providerMode?: HandrailQuickBooksProviderMode | string;
   provider_mode?: HandrailQuickBooksOptions['providerMode'];
+  tenantId?: string;
+  tenant_id?: string;
   apiKey?: string;
   api_key?: string;
   baseUrl?: string;
@@ -119,6 +121,8 @@ export interface HandrailQuickBooksResolvedOptions {
   service_url: string;
   providerMode: HandrailQuickBooksProviderMode;
   provider_mode: HandrailQuickBooksProviderMode;
+  tenantId?: string;
+  tenant_id?: string;
   apiKey?: string;
   api_key?: string;
   requestTimeoutMs: number;
@@ -142,12 +146,12 @@ export interface HandrailQuickBooksTenantClient {
 
 export interface HandrailQuickBooksClient {
   readonly options: HandrailQuickBooksResolvedOptions;
-  tenant(tenantId: string): HandrailQuickBooksTenantClient;
+  tenant(tenantId?: string): HandrailQuickBooksTenantClient;
   request(path: string, init?: HandrailQuickBooksRequestInit): Promise<unknown>;
   getConfig(): Pick<
     HandrailQuickBooksResolvedOptions,
-    'serviceEnvironment' | 'serviceUrl' | 'providerMode' | 'localOverride'
-  > & { hasApiKey: boolean };
+    'serviceEnvironment' | 'serviceUrl' | 'providerMode' | 'tenantId' | 'localOverride'
+  > & { hasApiKey: boolean; hasTenantId: boolean };
 }
 
 export interface HandrailQuickBooksRequestInit {

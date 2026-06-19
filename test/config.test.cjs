@@ -241,13 +241,15 @@ test('QuickBooks config resolves canonical service URLs by environment', () => {
   const staging = handrail.loadQuickBooksConfigFromEnv({
     HANDRAIL_QBO_SERVICE_ENV: 'staging',
     HANDRAIL_QBO_PROVIDER_MODE: 'sandbox',
-    HANDRAIL_QBO_API_KEY: 'qbo-key'
+    HANDRAIL_QBO_API_KEY: 'qbo-key',
+    HANDRAIL_QBO_TENANT_ID: 'qbo-hitcents-api-staging'
   });
 
   assert.equal(staging.serviceEnvironment, 'staging');
   assert.equal(staging.serviceUrl, 'https://quickbooks.hitcents.staging.handrail-daas.com');
   assert.equal(staging.providerMode, 'sandbox');
   assert.equal(staging.apiKey, 'qbo-key');
+  assert.equal(staging.tenantId, 'qbo-hitcents-api-staging');
   assert.equal(staging.localOverride, false);
 
   const production = handrail.loadQuickBooksConfigFromEnv({
@@ -271,6 +273,32 @@ test('QuickBooks base URL is an explicit local override only', () => {
   assert.equal(config.serviceEnvironment, 'staging');
   assert.equal(config.serviceUrl, 'http://127.0.0.1:6062');
   assert.equal(config.localOverride, true);
+});
+
+test('QuickBooks tenant client can use capability-provisioned tenant env', async () => {
+  const calls = [];
+  const client = handrail.createQuickBooksClient({
+    serviceEnvironment: 'staging',
+    apiKey: 'qbo-key',
+    tenantId: 'qbo-hitcents-api-staging',
+    fetch: async (url, init) => {
+      calls.push({ url, init });
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ ok: true })
+      };
+    }
+  });
+
+  const config = client.getConfig();
+  assert.equal(config.tenantId, 'qbo-hitcents-api-staging');
+  assert.equal(config.hasTenantId, true);
+
+  const result = await client.tenant().status();
+
+  assert.deepEqual(result, { ok: true });
+  assert.equal(calls[0].url, 'https://quickbooks.hitcents.staging.handrail-daas.com/api/tenants/qbo-hitcents-api-staging/status');
 });
 
 test('QuickBooks tenant client sends tenant-scoped requests with API key auth', async () => {

@@ -1090,7 +1090,7 @@ class HandrailQuickBooksClient {
   }
 
   tenant(tenantId) {
-    const id = normalizeQuickBooksTenantId(tenantId);
+    const id = normalizeQuickBooksTenantId(firstDefined(tenantId, this.options.tenantId));
     return new HandrailQuickBooksTenantClient(this, id);
   }
 
@@ -1103,7 +1103,9 @@ class HandrailQuickBooksClient {
       serviceEnvironment: this.options.serviceEnvironment,
       serviceUrl: this.options.serviceUrl,
       providerMode: this.options.providerMode,
+      tenantId: this.options.tenantId,
       hasApiKey: Boolean(this.options.apiKey),
+      hasTenantId: Boolean(this.options.tenantId),
       localOverride: this.options.localOverride
     };
   }
@@ -1408,6 +1410,7 @@ function normalizeQuickBooksOptions(options = {}, env = process.env) {
   const localOverride = stringOrUndefined(firstDefined(options.baseUrl, options.base_url, env.HANDRAIL_QBO_BASE_URL));
   const serviceUrl = normalizeQuickBooksServiceUrl(localOverride || QUICKBOOKS_SERVICE_URLS[serviceEnvironment]);
   const apiKey = stringOrUndefined(firstDefined(options.apiKey, options.api_key, env.HANDRAIL_QBO_API_KEY, env.HANDRAIL_QBO_SERVICE_TOKEN));
+  const tenantId = stringOrUndefined(firstDefined(options.tenantId, options.tenant_id, env.HANDRAIL_QBO_TENANT_ID));
   const requestTimeoutMs = integerOrDefault(
     firstDefined(options.requestTimeoutMs, options.fetchTimeoutMs, options.timeoutMs),
     DEFAULT_QUICKBOOKS_REQUEST_TIMEOUT_MS
@@ -1422,6 +1425,8 @@ function normalizeQuickBooksOptions(options = {}, env = process.env) {
     provider_mode: providerMode,
     apiKey,
     api_key: apiKey,
+    tenantId,
+    tenant_id: tenantId,
     requestTimeoutMs,
     request_timeout_ms: requestTimeoutMs,
     fetch: typeof options.fetch === 'function' ? options.fetch : undefined,
