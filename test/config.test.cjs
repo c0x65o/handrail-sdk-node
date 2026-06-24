@@ -246,7 +246,7 @@ test('QuickBooks config resolves canonical service URLs by environment', () => {
   });
 
   assert.equal(staging.serviceEnvironment, 'staging');
-  assert.equal(staging.serviceUrl, 'https://quickbooks.hitcents.staging.handrail-daas.com');
+  assert.equal(staging.serviceUrl, 'https://quickbooks.handrail.staging.handrail-daas.com');
   assert.equal(staging.providerMode, 'sandbox');
   assert.equal(staging.apiKey, 'qbo-key');
   assert.equal(staging.tenantId, 'qbo-hitcents-api-staging');
@@ -298,7 +298,7 @@ test('QuickBooks tenant client can use capability-provisioned tenant env', async
   const result = await client.tenant().status();
 
   assert.deepEqual(result, { ok: true });
-  assert.equal(calls[0].url, 'https://quickbooks.hitcents.staging.handrail-daas.com/api/tenants/qbo-hitcents-api-staging/status');
+  assert.equal(calls[0].url, 'https://quickbooks.handrail.staging.handrail-daas.com/api/tenants/qbo-hitcents-api-staging/status');
 });
 
 test('QuickBooks tenant client sends tenant-scoped requests with API key auth', async () => {
@@ -320,7 +320,7 @@ test('QuickBooks tenant client sends tenant-scoped requests with API key auth', 
 
   assert.deepEqual(result, { id: 'job-1' });
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, 'https://quickbooks.hitcents.staging.handrail-daas.com/api/tenants/tenant-hitcents/sync/jobs');
+  assert.equal(calls[0].url, 'https://quickbooks.handrail.staging.handrail-daas.com/api/tenants/tenant-hitcents/sync/jobs');
   assert.equal(calls[0].init.method, 'POST');
   assert.equal(calls[0].init.headers.authorization, 'Bearer qbo-key');
   assert.equal(calls[0].init.headers['x-handrail-qbo-provider-mode'], 'sandbox');

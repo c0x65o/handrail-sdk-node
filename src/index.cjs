@@ -21,7 +21,7 @@ const DEFAULT_APM_ENDPOINT_MODE = 'gateway';
 const DEFAULT_APM_DIRECT_ENDPOINT = '/api/apm/events';
 const DEFAULT_ANALYTICS_ASSIGNMENT_ENDPOINT = '/api/analytics/experiments/assign';
 const QUICKBOOKS_SERVICE_URLS = Object.freeze({
-  staging: 'https://quickbooks.hitcents.staging.handrail-daas.com',
+  staging: 'https://quickbooks.handrail.staging.handrail-daas.com',
   production: 'https://quickbooks.handrail-daas.com'
 });
 const DEFAULT_MAX_TAGS = 25;

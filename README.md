@@ -211,7 +211,7 @@ Canonical service URLs are built into the SDK:
 
 | Service environment | URL |
 | --- | --- |
-| `staging` | `https://quickbooks.hitcents.staging.handrail-daas.com` |
+| `staging` | `https://quickbooks.handrail.staging.handrail-daas.com` |
 | `production` | `https://quickbooks.handrail-daas.com` |
 
 Supported consumer env keys:
