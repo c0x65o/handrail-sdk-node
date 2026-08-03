@@ -186,6 +186,53 @@ run().catch((error) => {
 });
 ```
 
+## Assistant Change Bridge (server only)
+
+The v1 bridge client is disabled unless its complete, capability-generated
+runtime contract is present. Use it only in the bound server runtime; never
+copy `HANDRAIL_ASSISTANT_BRIDGE_TOKEN` into browser, mobile, or public build
+configuration.
+
+```js
+import { createAssistantChangeBridgeClient } from '@handrail/sdk-node';
+
+const bridge = createAssistantChangeBridgeClient(); // reads server process.env
+const discovery = await bridge.discover({
+  issuer: 'https://assistant.example.com',
+  subject: stableApplicationPrincipalId,
+});
+
+const submission = await bridge.submit({
+  issuer: 'https://assistant.example.com',
+  subject: stableApplicationPrincipalId,
+  idempotency_key: `${externalConversationId}:${stableTurnId}`,
+  external_conversation_id: externalConversationId,
+  requested_mode: 'feature',
+  requested_delivery_ceiling: 'intake_only',
+  title: 'Add a bounded product feature',
+  description: 'Requested through the external assistant conversation.',
+});
+```
+
+Every operation requires the stable issuer-plus-subject principal. Submission
+also requires a stable external conversation ID and idempotency key. The client
+automatically retries discovery, lookup, cancellation, and idempotent
+submission; it does not retry clarification because duplicate clarification
+history would not be safe. `getConfig()` and exported config loading report
+only `hasToken`, never the credential value. When configuration is absent or
+disabled, all five operations resolve to `null` without making a request.
+
+The capability-generated server environment uses these keys:
+
+| Variable | Purpose |
+| --- | --- |
+| `HANDRAIL_ASSISTANT_BRIDGE_ENABLED` | Explicit opt-in; must be `true`. |
+| `HANDRAIL_ASSISTANT_BRIDGE_API_URL` | Versioned REST base URL ending in `/v1`. |
+| `HANDRAIL_ASSISTANT_BRIDGE_VERSION` | Contract version; currently `v1`. |
+| `HANDRAIL_ASSISTANT_BRIDGE_PROJECT_ID` | Exact bound Handrail project. |
+| `HANDRAIL_ASSISTANT_BRIDGE_CAPABILITY_ID` | Exact enabled capability. |
+| `HANDRAIL_ASSISTANT_BRIDGE_TOKEN` | Server-only scoped bearer credential. |
+
 ## QuickBooks Integration Client
 
 Consumer apps should select a QuickBooks service environment and provide an API

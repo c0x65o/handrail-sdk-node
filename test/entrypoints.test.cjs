@@ -51,6 +51,13 @@ const OPERATION_PUBLIC_EXPORTS = [
   'verifyOperationInvocationSignature'
 ];
 
+const ASSISTANT_BRIDGE_PUBLIC_EXPORTS = [
+  'HandrailAssistantChangeBridgeClient',
+  'HandrailAssistantChangeBridgeError',
+  'createAssistantChangeBridgeClient',
+  'loadAssistantChangeBridgeConfigFromEnv'
+];
+
 test('package self-reference resolves the canonical @handrail/sdk-node entrypoints', async () => {
   const cjs = require('@handrail/sdk-node');
   const esm = await import('@handrail/sdk-node');
@@ -119,6 +126,17 @@ test('operation invocation helpers are exported across entrypoints', async () =>
   }
 });
 
+test('Assistant Change Bridge client is exported across server-side entrypoints', async () => {
+  const cjs = require('@handrail/sdk-node');
+  const esm = await import('@handrail/sdk-node');
+
+  for (const exportName of ASSISTANT_BRIDGE_PUBLIC_EXPORTS) {
+    assert.equal(typeof cjs[exportName], 'function', `missing CommonJS bridge export ${exportName}`);
+    assert.equal(esm[exportName], cjs[exportName], `ESM named ${exportName} is not CommonJS export`);
+    assert.equal(esm.default[exportName], cjs[exportName], `ESM default ${exportName} is not CommonJS export`);
+  }
+});
+
 test('TypeScript declarations cover legacy names and Signals aliases', () => {
   const declarations = fs.readFileSync(
     path.join(__dirname, '..', 'src', 'index.d.ts'),
@@ -139,6 +157,11 @@ test('TypeScript declarations cover legacy names and Signals aliases', () => {
   assert.match(declarations, /declare const sdk: \{/);
 
   for (const exportName of OPERATION_PUBLIC_EXPORTS) {
+    assert.match(declarations, new RegExp(`\\b${exportName}\\b`), `missing declaration for ${exportName}`);
+    assert.match(declarations, new RegExp(`${exportName}: typeof ${exportName};`), `missing sdk declaration for ${exportName}`);
+  }
+
+  for (const exportName of ASSISTANT_BRIDGE_PUBLIC_EXPORTS) {
     assert.match(declarations, new RegExp(`\\b${exportName}\\b`), `missing declaration for ${exportName}`);
     assert.match(declarations, new RegExp(`${exportName}: typeof ${exportName};`), `missing sdk declaration for ${exportName}`);
   }

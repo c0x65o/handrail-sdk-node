@@ -162,6 +162,177 @@ export interface HandrailQuickBooksRequestInit {
   [key: string]: unknown;
 }
 
+export type HandrailAssistantChangeBridgeVersion = 'v1';
+export type HandrailAssistantChangeBridgeMode = 'feature' | 'task';
+export type HandrailAssistantChangeBridgeDeliveryCeiling = 'intake_only';
+export type HandrailAssistantChangeBridgeStatus =
+  | 'pending'
+  | 'needs_clarification'
+  | 'accepted'
+  | 'cancelled'
+  | 'failed';
+
+export interface HandrailAssistantChangeBridgePrincipal {
+  /** Stable external identity issuer. Display names and mutable email alone are not stable identities. */
+  issuer: string;
+  /** Stable issuer-scoped subject identifier. */
+  subject: string;
+}
+
+export interface HandrailAssistantChangeBridgeOptions {
+  enabled?: boolean | string;
+  apiUrl?: string;
+  api_url?: string;
+  version?: HandrailAssistantChangeBridgeVersion | string;
+  projectId?: string;
+  project_id?: string;
+  capabilityId?: string;
+  capability_id?: string;
+  /** Server-only scoped credential. Never pass this option to browser or mobile code. */
+  token?: string;
+  requestTimeoutMs?: number;
+  request_timeout_ms?: number;
+  fetchTimeoutMs?: number;
+  maxRetries?: number;
+  max_retries?: number;
+  retryBaseDelayMs?: number;
+  retry_base_delay_ms?: number;
+  retryMaxDelayMs?: number;
+  retry_max_delay_ms?: number;
+  fetch?: HandrailFetch;
+}
+
+export interface HandrailAssistantChangeBridgeResolvedOptions {
+  enabled: boolean;
+  disabledReason:
+    | 'disabled'
+    | 'missing_token'
+    | 'missing_api_url'
+    | 'invalid_api_url'
+    | 'unsupported_version'
+    | 'incomplete_config'
+    | null;
+  missingConfig: string[];
+  apiUrl?: string;
+  api_url?: string;
+  version?: string;
+  projectId?: string;
+  project_id?: string;
+  capabilityId?: string;
+  capability_id?: string;
+  hasToken: boolean;
+  requestTimeoutMs: number;
+  maxRetries: number;
+  retryBaseDelayMs: number;
+  retryMaxDelayMs: number;
+}
+
+export interface HandrailAssistantChangeBridgeDiscovery
+  extends Record<string, unknown> {
+  contract_version: HandrailAssistantChangeBridgeVersion;
+  enabled: true;
+  capability: {
+    id: string;
+    project_id: string;
+    repo_id: string;
+    service_env_id: string;
+    environment: string;
+    kb_slugs: string[];
+  };
+  principal: HandrailAssistantChangeBridgePrincipal;
+  policy: {
+    allowed_modes: HandrailAssistantChangeBridgeMode[];
+    delivery_ceiling: HandrailAssistantChangeBridgeDeliveryCeiling;
+    creates_work_requests: false;
+    creates_owner_goals: false;
+    cancellation: 'pre_acceptance_only';
+  };
+  operations: Array<'discover' | 'submit' | 'lookup' | 'clarify' | 'cancel'>;
+}
+
+export interface HandrailAssistantChangeBridgeSubmitInput
+  extends HandrailAssistantChangeBridgePrincipal {
+  idempotency_key: string;
+  external_conversation_id: string;
+  requested_mode: HandrailAssistantChangeBridgeMode;
+  requested_delivery_ceiling: HandrailAssistantChangeBridgeDeliveryCeiling;
+  title: string;
+  description?: string | null;
+  parent_feature_id?: string | null;
+  priority?: string | null;
+}
+
+export interface HandrailAssistantChangeBridgeLookupInput
+  extends HandrailAssistantChangeBridgePrincipal {
+  request_id: string;
+}
+
+export interface HandrailAssistantChangeBridgeClarifyInput
+  extends HandrailAssistantChangeBridgeLookupInput {
+  response: string;
+  title?: string | null;
+  description?: string | null;
+  parent_feature_id?: string | null;
+}
+
+export interface HandrailAssistantChangeBridgeCancelInput
+  extends HandrailAssistantChangeBridgeLookupInput {
+  reason?: string | null;
+}
+
+export interface HandrailAssistantChangeBridgeRequest
+  extends Record<string, unknown> {
+  id: string;
+  contract_version: HandrailAssistantChangeBridgeVersion;
+  capability_id: string;
+  project_id: string;
+  issuer: string;
+  subject: string;
+  idempotency_key: string;
+  external_conversation_id: string;
+  requested_mode: HandrailAssistantChangeBridgeMode;
+  requested_delivery_ceiling: HandrailAssistantChangeBridgeDeliveryCeiling;
+  effective_delivery_ceiling: HandrailAssistantChangeBridgeDeliveryCeiling;
+  title: string;
+  description: string | null;
+  parent_feature_id: string | null;
+  status: HandrailAssistantChangeBridgeStatus;
+  terminal: boolean;
+  clarification_history: Array<Record<string, unknown>>;
+  linked_pm_record: { type: HandrailAssistantChangeBridgeMode; id: string } | null;
+  audit_lineage: Array<Record<string, unknown>>;
+  terminal_evidence: Record<string, unknown>;
+  cancellation_reason: string | null;
+  cancelled_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HandrailAssistantChangeBridgeSubmitResponse {
+  request: HandrailAssistantChangeBridgeRequest;
+  replayed: boolean;
+}
+
+export declare class HandrailAssistantChangeBridgeError extends Error {
+  readonly code: string;
+  readonly status?: number;
+  readonly retryable: boolean;
+  readonly response?: unknown;
+}
+
+export declare class HandrailAssistantChangeBridgeClient {
+  readonly options: Readonly<HandrailAssistantChangeBridgeResolvedOptions>;
+  constructor(options?: HandrailAssistantChangeBridgeOptions);
+  isEnabled(): boolean;
+  getConfig(): HandrailAssistantChangeBridgeResolvedOptions;
+  discover(input: HandrailAssistantChangeBridgePrincipal): Promise<HandrailAssistantChangeBridgeDiscovery | null>;
+  submit(input: HandrailAssistantChangeBridgeSubmitInput): Promise<HandrailAssistantChangeBridgeSubmitResponse | null>;
+  lookup(input: HandrailAssistantChangeBridgeLookupInput): Promise<HandrailAssistantChangeBridgeRequest | null>;
+  clarify(input: HandrailAssistantChangeBridgeClarifyInput): Promise<HandrailAssistantChangeBridgeRequest | null>;
+  cancel(input: HandrailAssistantChangeBridgeCancelInput): Promise<HandrailAssistantChangeBridgeRequest | null>;
+}
+
 export interface HandrailAnalyticsOptions {
   enabled?: boolean;
   endpoint?: string;
@@ -728,6 +899,7 @@ export type HandrailFetch = (
 ) => Promise<{
   ok?: boolean;
   status?: number;
+  headers?: { get(name: string): string | null };
   json?: () => Promise<unknown>;
   text?: () => Promise<string>;
 }>;
@@ -1019,6 +1191,9 @@ export declare const SDK_VERSION: string;
 
 export declare function createClient(options?: HandrailApmOptions): HandrailApmClient;
 export declare const createSignalsClient: typeof createClient;
+export declare function createAssistantChangeBridgeClient(
+  options?: HandrailAssistantChangeBridgeOptions
+): HandrailAssistantChangeBridgeClient;
 export declare function createQuickBooksClient(options?: HandrailQuickBooksOptions): HandrailQuickBooksClient;
 export declare function init(options?: HandrailApmOptions): HandrailApmClient;
 export declare function getCurrentClient(): HandrailApmClient;
@@ -1033,6 +1208,10 @@ export declare function loadConfigFromEnv(
   env?: Record<string, string | undefined>,
   overrides?: HandrailApmOptions
 ): HandrailApmResolvedOptions;
+export declare function loadAssistantChangeBridgeConfigFromEnv(
+  env?: Record<string, string | undefined>,
+  overrides?: HandrailAssistantChangeBridgeOptions
+): HandrailAssistantChangeBridgeResolvedOptions;
 export declare function loadQuickBooksConfigFromEnv(
   env?: Record<string, string | undefined>,
   overrides?: HandrailQuickBooksOptions
@@ -1120,6 +1299,8 @@ export declare function shutdown(options?: HandrailShutdownOptions): Promise<boo
 
 declare const sdk: {
   HandrailApmClient: typeof HandrailApmClient;
+  HandrailAssistantChangeBridgeClient: typeof HandrailAssistantChangeBridgeClient;
+  HandrailAssistantChangeBridgeError: typeof HandrailAssistantChangeBridgeError;
   HandrailSignalsClient: typeof HandrailSignalsClient;
   SDK_NAME: typeof SDK_NAME;
   SDK_VERSION: typeof SDK_VERSION;
@@ -1133,6 +1314,7 @@ declare const sdk: {
   captureMessage: typeof captureMessage;
   captureSpan: typeof captureSpan;
   createClient: typeof createClient;
+  createAssistantChangeBridgeClient: typeof createAssistantChangeBridgeClient;
   createQuickBooksClient: typeof createQuickBooksClient;
   createSignalsClient: typeof createSignalsClient;
   experiment: typeof experiment;
@@ -1148,6 +1330,7 @@ declare const sdk: {
   init: typeof init;
   installProcessErrorHandlers: typeof installProcessErrorHandlers;
   loadConfigFromEnv: typeof loadConfigFromEnv;
+  loadAssistantChangeBridgeConfigFromEnv: typeof loadAssistantChangeBridgeConfigFromEnv;
   loadQuickBooksConfigFromEnv: typeof loadQuickBooksConfigFromEnv;
   page: typeof page;
   shutdown: typeof shutdown;

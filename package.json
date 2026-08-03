@@ -1,6 +1,6 @@
 {
   "name": "@handrail/sdk-node",
-  "version": "0.1.26",
+  "version": "0.1.29",
   "description": "Handrail Signals Node SDK for Product Signals, Runtime Signals, analytics, experimentation, and Express services.",
   "license": "UNLICENSED",
   "type": "module",
@@ -25,7 +25,8 @@
   },
   "scripts": {
     "check": "node --check src/index.cjs && node --check src/index.mjs",
-    "test": "npm run check && node --test test/*.test.cjs"
+    "typecheck": "tsc -p tsconfig.contract.json",
+    "test": "npm run check && npm run typecheck && node --test test/*.test.cjs"
   },
   "keywords": [
     "handrail",
@@ -48,5 +49,8 @@
     "express": {
       "optional": true
     }
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
   }
 }
