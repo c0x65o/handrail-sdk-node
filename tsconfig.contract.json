@@ -7,5 +7,5 @@
     "target": "ES2022",
     "types": []
   },
-  "include": ["test/types/**/*.ts"]
+  "include": ["src/index.d.ts"]
 }
